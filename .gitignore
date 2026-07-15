@@ -1,0 +1,38 @@
+# Local vendor evidence and archives are intentionally not synchronized.
+reference/
+
+# Build logs and temporary reports stay local. The handwritten audit report is
+# the only committed file under build/.
+build/*
+!build/.gitkeep
+!build/task-report.md
+
+# Machine-local tool paths and transient Codex files.
+tools/local.env.ps1
+.codex-log/
+tmp/
+
+# Keil/CubeMX user state and build products.
+*.uvguix.*
+*.uvoptx
+*.axf
+*.hex
+*.bin
+*.o
+*.obj
+*.d
+*.crf
+*.map
+*.lst
+*.lnp
+*.dep
+*.bak
+*.tmp
+*.log
+target/c5-firmware/MDK-ARM/c5-firmware/
+target/c5-firmware/MDK-ARM/DebugConfig/
+target/c5-firmware/MDK-ARM/RTE/
+
+# Language-local caches.
+__pycache__/
+.venv/

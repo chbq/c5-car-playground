@@ -1,0 +1,3 @@
+# Preserve CubeMX/ST generated files exactly as emitted. Their upstream sources
+# contain intentional trailing whitespace and blank EOF lines.
+target/c5-firmware/** -whitespace

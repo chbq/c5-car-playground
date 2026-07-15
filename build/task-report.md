@@ -1,0 +1,116 @@
+# Task Report - Hardware, Toolchain and Generated Baseline
+
+Date: 2026-07-15
+
+## Outcome
+
+- Organized `docs/` as a compact linked hardware wiki.
+- Recorded the system requirements, board architecture, H1 map, pin/peripheral budget, evidence inventory and unresolved checks.
+- Initially classified the 8 MHz HSE value as source-derived; the user subsequently accepted it as the project input without further physical verification.
+- Initialized an empty Git repository on branch `main`.
+- Left all files unstaged and uncommitted.
+- Clarified that `MANIFEST.json` is the original scaffold checksum snapshot, not a live post-adaptation manifest.
+
+## Commands and results
+
+| Operation | Result |
+|---|---|
+| Bounded repository inventory with `rg --files` and PowerShell counts | Exit 0 |
+| Vendor PDF metadata/text inspection with bundled `pypdf` | Exit 0 |
+| Core/base schematic rendering for visual pin verification | Exit 0; temporary previews removed after use |
+| Read-only ZIP inventory and targeted vendor-source extraction with `tar` | Exit 0 |
+| Physical-photo metadata and visual inspection | Completed; crystal marking remained unreadable |
+| `git init -b main` | Exit 0 |
+
+## Explicitly not run
+
+- `tools/doctor.ps1`
+- `tools/generate.ps1`
+- `tools/build.ps1`
+- `tools/verify.ps1`
+- `tools/flash.ps1`
+- CubeMX, Keil, compiler, programmer or motor-control commands
+
+## Build and firmware
+
+- Build errors: not applicable; no build was run.
+- Build warnings: not applicable; no build was run.
+- Firmware output path: none.
+
+## Hardware not tested
+
+- Physical crystal marking and PCB revision silks; these are now deferred rather than project-generation blockers.
+- H1 pin-1 orientation and continuity.
+- SWD connectivity and NRST access.
+- Power-rail voltages.
+- USART electrical behavior and CH340 enumeration.
+- DAT idle voltage, waveform and collision behavior.
+- Physical motor IDs, wheel mapping, command timing and communication-loss stop.
+- No board was flashed and no motor was driven.
+
+## Toolchain audit update
+
+- Created ignored `tools/local.env.ps1` with current machine paths.
+- Extended doctor to report tool versions, compiler versions, CubeF1 repositories and Keil DFP installations.
+- Pinned STM32CubeF1 1.8.7 and ARM Compiler 5.06u7 for the first baseline; retained ARM Compiler 6.19 for later compatibility builds.
+- Added an idempotent official-pack installer and installed Keil STM32F1xx DFP 2.4.1.
+- Verified that the installed DFP contains STM32F103C8.
+- Final doctor run exited 0 and both JSON and Markdown reports were validated.
+
+| Toolchain operation | Result |
+|---|---|
+| PowerShell syntax parse for modified scripts | Exit 0; zero parse errors |
+| Installer preview with `-WhatIf` | Exit 0 |
+| First installer invocation with incorrectly forwarded `-Confirm:$false` | Exit 1 before download or installation; command corrected |
+| DFP 2.4.1 download and installation | Exit 0 |
+| Idempotent installer re-run | Exit 0; reported already installed |
+| First enhanced doctor run | Exit 0; exposed a Markdown escaping defect |
+| Doctor report escaping fix and final re-run | Exit 0 |
+
+The DFP archive SHA-256 is `807EA15DA5B172B916BBC47B2B87F1E621240AD208D38E82A417A2EF8191E9D1`.
+
+## Phase 0 status
+
+Phase 0 is complete. Physical H1/SWD wiring may be verified when the cable is made; it does not block project generation.
+
+## Phase 1 CubeMX and Keil baseline
+
+- Created `target/c5-firmware/c5-firmware.ioc` for STM32F103C8T6.
+- Generated the CubeF1 1.8.7 HAL and MDK-ARM V5 project.
+- Configured HSE 8 MHz / SYSCLK 72 MHz, SWD, three 115200 UARTs and PB13 LED off at startup.
+- Confirmed the generated code contains no UART transmit call or motor command.
+- Rebuilt with ARM Compiler 5.06 update 7 build 960.
+
+| Command | Result |
+|---|---|
+| `tools/generate.ps1` | Exit 0; MDK project generated |
+| `tools/build.ps1 -Rebuild` | Exit 0; 0 errors, 0 warnings |
+
+Program size: Code 2024, RO-data 276, RW-data 16, ZI-data 1848 bytes.
+
+Firmware image: `target/c5-firmware/MDK-ARM/c5-firmware/c5-firmware.hex`.
+
+No firmware was flashed, no serial link was opened and no motor command was sent.
+
+Automation issues found and corrected during the first run:
+
+- `generate.ps1` originally evaluated the local `.ioc` path before loading
+  `local.env.ps1`; the load order was fixed.
+- the local CubeMX update retained an obsolete `userauth.jar`, causing
+  `NoClassDefFoundError: BrowserView`; it was renamed to `.disabled` and
+  generation then completed.
+- CubeMX can return process success even when no IDE project was produced;
+  `generate.ps1` now requires the expected `.uvprojx` output.
+- PowerShell did not wait for the GUI-subsystem `UV4.exe`; `build.ps1` now waits
+  for completion and validates the final Keil error/warning summary and HEX file.
+
+## Repository synchronization scope
+
+The initial Git baseline contains project-owned firmware sources, CubeMX/MDK
+project files, automation scripts, prompts, tests and documentation. The
+following remain local and are excluded by `.gitignore`:
+
+- all merchant/vendor evidence under `reference/`;
+- Keil build outputs including HEX, AXF, MAP, listings and object files;
+- generated logs and diagnostics under `build/` except this handwritten report;
+- `tools/local.env.ps1` and other machine-local state.
