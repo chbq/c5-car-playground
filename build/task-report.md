@@ -139,6 +139,41 @@ refresh time. The regeneration gate is complete.
 
 No firmware was flashed, no serial port was opened and no motor was driven.
 
+## Phase 3 PS2/SWD dual-mode remote control
+
+Date: 2026-07-17
+
+- Added a standard nine-byte PS2 decoder for analog IDs `0x73` and `0x79`.
+- Added host-testable neutral arming, L1/R1 dead-man, mecanum stick mapping,
+  invalid-frame stop and 150 ms link timeout with tick-wrap handling.
+- Added a KEY1 state machine: 30 ms debounce, immediate stop on a PS2-mode
+  press, and 2-second long-press entry/exit.
+- Added HAL GPIO bit-bang on PA12 CLK, PA13 ATT, PA14 CMD and PA15 DAT using
+  DWT cycle timing. Entry disables SWJ only after an explicit request; exit
+  idles and deinitializes the PS2 pins before restoring SWD.
+- Added PA8 `KEY1_N` input pull-up to CubeMX. Active-low polarity remains an
+  explicit unverified configuration assumption.
+- Added PB13 mode feedback: off in debug mode, blinking while PS2 is disarmed,
+  solid while the remote is ready or active.
+- Refreshed the root overview, firmware README, hardware wiki, acceptance gates
+  and manual HIL outline.
+
+| Command | Result |
+|---|---|
+| `tools/test-host.ps1` | Exit 0; MSVC `/W4 /WX`; `c5_motion_tests: PASS` |
+| `tools/generate.ps1` | Exit 0; CubeMX completion markers present; 8 App sources synchronized |
+| `tools/build.ps1 -Rebuild` | Exit 0; AC5.06u7; 0 errors, 0 warnings |
+| `tools/verify.ps1` | Exit 0; doctor, host tests, CubeMX generation and Keil build all passed |
+
+Program size: Code 5448, RO-data 296, RW-data 36, ZI-data 1940 bytes.
+
+Firmware image: `target/c5-firmware/MDK-ARM/c5-firmware/c5-firmware.hex`.
+
+No firmware was flashed, no serial port was opened and no motor command was
+sent. KEY1 polarity, controller timing/compatibility, LED behavior, SWD
+reconnection and every physical motion behavior remain unverified hardware
+acceptance items.
+
 ## Repository synchronization scope
 
 The initial Git baseline contains project-owned firmware sources, CubeMX/MDK

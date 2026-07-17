@@ -39,12 +39,15 @@ $lines = @(
     '@echo off',
     "call `"$vsDevCmd`" -arch=x64 -host_arch=x64 >nul",
     'if errorlevel 1 exit /b %errorlevel%',
-    ('cl.exe /nologo /W4 /WX /TC /I"{0}" "{1}" "{2}" "{3}" "{4}" /Fe:"{5}"' -f `
+    ('cl.exe /nologo /W4 /WX /TC /I"{0}" "{1}" "{2}" "{3}" "{4}" "{5}" "{6}" "{7}" /Fe:"{8}"' -f `
         $appInclude,
         $testSource,
         (Join-Path $appSource 'c5_motor_protocol.c'),
         (Join-Path $appSource 'c5_mecanum.c'),
         (Join-Path $appSource 'c5_motion.c'),
+        (Join-Path $appSource 'c5_ps2.c'),
+        (Join-Path $appSource 'c5_remote.c'),
+        (Join-Path $appSource 'c5_control.c'),
         $testExe)
 )
 $lines | Set-Content -LiteralPath $compileScript -Encoding ASCII

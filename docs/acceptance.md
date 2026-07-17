@@ -8,8 +8,8 @@
 - [x] HSE set to 8 MHz from vendor source and accepted as the project input
 - [x] H1 and SWD mapping documented; physical cable verification deferred to connection time
 - [x] Vendor schematic revisions accepted unless hardware behavior disagrees
-- [x] Git repository initialized on branch `main`; no files staged or committed
-- [ ] Vendor source remains unchanged
+- [x] Git repository initialized on `main` and synchronized to the private remote
+- [x] Vendor evidence is ignored, protected by repository policy and was not copied into firmware
 
 ## Gate A - Environment ready
 
@@ -46,3 +46,15 @@
 - [ ] both directions tested at low duty
 - [ ] bounded runtime and automatic stop work
 - [ ] communication-loss stop works
+
+## Gate E - PS2 remote control
+
+- [x] PA8 KEY1 input and boot-time SWD allocation regenerate from CubeMX
+- [x] PS2 protocol, mapping and mode policy pass host tests with warnings as errors
+- [x] Complete target builds with AC5 at zero errors and zero warnings
+- [ ] KEY1 idle and pressed polarity measured on the installed board
+- [ ] ST-LINK disconnected before PA13/PA14 are reassigned
+- [ ] Receiver reports consecutive valid neutral analog frames
+- [ ] Short KEY1 press, dead-man release and receiver disconnect each stop the car
+- [ ] Long KEY1 press releases PS2 GPIO and SWD reconnects after probe refresh
+- [ ] Stick directions are accepted with the chassis raised and low speed limit

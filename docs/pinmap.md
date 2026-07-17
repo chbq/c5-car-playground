@@ -6,7 +6,7 @@
 |---|---|---|---|---|
 | Fixed | Wired PC, log and serial boot | USART1 PA9/PA10 | CH340 and USB connector | Keep |
 | Fixed | Four-wheel motor bus | USART3 PB10/PB11 | H1 to baseboard DAT circuit | Keep |
-| Fixed | Debug/programming | PA13 SWDIO, PA14 SWCLK | H1 pins 11/12 | Keep; do not initialize PS2 |
+| Conditional | Debug/programming | PA13 SWDIO, PA14 SWCLK | H1 pins 11/12 | Keep at boot; release only after KEY1 long press for PS2 mode |
 | Reserved | Independent host expansion | USART2 PA2/PA3 | H1 pins 26/24 | Reserve for Bluetooth, TTL UART or RS485 |
 | Reserved if RS485 | Driver direction | PA11 candidate | H1 pin 14 / KEY2 net | Reserve until transceiver choice |
 | Board-owned | External Flash | SPI2 PB12-PB15 | W25Q64; PB13 also LED | Preserve initially |

@@ -519,6 +519,11 @@
           <GroupName>Application/User/App</GroupName>
           <Files>
             <File>
+              <FileName>c5_control.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../App/Src/c5_control.c</FilePath>
+            </File>
+            <File>
               <FileName>c5_mecanum.c</FileName>
               <FileType>1</FileType>
               <FilePath>../App/Src/c5_mecanum.c</FilePath>
@@ -537,6 +542,21 @@
               <FileName>c5_motor_protocol.c</FileName>
               <FileType>1</FileType>
               <FilePath>../App/Src/c5_motor_protocol.c</FilePath>
+            </File>
+            <File>
+              <FileName>c5_ps2.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../App/Src/c5_ps2.c</FilePath>
+            </File>
+            <File>
+              <FileName>c5_ps2_hal.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../App/Src/c5_ps2_hal.c</FilePath>
+            </File>
+            <File>
+              <FileName>c5_remote.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>../App/Src/c5_remote.c</FilePath>
             </File>
           </Files>
         </Group>

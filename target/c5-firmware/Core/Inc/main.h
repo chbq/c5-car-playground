@@ -67,6 +67,8 @@ void Error_Handler(void);
 #define MOTOR_UART_RX_GPIO_Port GPIOB
 #define STATUS_LED_N_Pin GPIO_PIN_13
 #define STATUS_LED_N_GPIO_Port GPIOB
+#define KEY1_N_Pin GPIO_PIN_8
+#define KEY1_N_GPIO_Port GPIOA
 #define DIAG_UART_TX_Pin GPIO_PIN_9
 #define DIAG_UART_TX_GPIO_Port GPIOA
 #define DIAG_UART_RX_Pin GPIO_PIN_10

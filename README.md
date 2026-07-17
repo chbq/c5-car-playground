@@ -1,14 +1,15 @@
-# C5 Car Codex Playground v0.2
+# C5 Car Codex Playground
 
 这是一个用于 C5 四轮麦克纳姆小车的 Codex 本地开发工作台。
 
-当前阶段的目标不是迁移 C25 工程，而是：
+项目当前已完成干净的 CubeMX + Keil 基线和第一版麦轮运动软件，正在接入
+PS2 手柄直控。目标是：
 
-1. 审计 C5 商家资料和本机 STM32 工具链；
-2. 创建干净的 STM32CubeMX + Keil 工程；
-3. 建立可重复的生成、编译、显式烧录与验证流程；
-4. 先让 C5 完成最小 bring-up；
-5. 后续再逐项接入电机、编码器、麦轮运动学和业务功能。
+1. 维护可审计的 C5 硬件事实和引脚分配；
+2. 用 STM32CubeMX 生成 HAL 工程，并以 Keil AC5 构建；
+3. 通过 USART3 总线控制四个独立电机并实现麦轮运动学；
+4. 保留 USART1 诊断、USART2 上位机链路和显式烧录流程；
+5. 在运行时选择保留 SWD，或释放 PA13/PA14 给 PS2 手柄使用。
 
 ## 目录用途
 
@@ -18,53 +19,37 @@
 - `tasks/`：Codex 当前任务与已完成任务。
 - `prompts/`：分阶段启动提示词。
 - `tools/`：环境检查、CubeMX 生成、Keil 构建、烧录与验收脚本。
-- `tests/`：后续串口和真机测试。
+- `tests/`：主机单元测试和后续真机验收说明。
 - `build/`：日志和临时产物不提交；仅保留人工维护的 `task-report.md`。
 
-## 第一次使用
-
-1. 解压本目录。
-2. 将商家原始资料完整复制到 `reference/c5-vendor/`。
-3. 复制本机配置模板：
+## 常用命令
 
 ```powershell
 Copy-Item .\tools\local.env.example.ps1 .\tools\local.env.ps1
-```
-
-4. 可先不填写路径，运行自动探测：
-
-```powershell
 Set-ExecutionPolicy -Scope Process Bypass
 .\tools\doctor.ps1
-```
-
-5. 在目录根部启动 Codex：
-
-```powershell
-codex
-```
-
-6. 第一条消息：
-
-```text
-Read AGENTS.md, tasks/current.md, and prompts/00_first_run_audit.md.
-Execute the audit task. Do not modify vendor files and do not flash hardware.
+.\tools\test-host.ps1
+.\tools\generate.ps1
+.\tools\build.ps1 -Rebuild
+.\tools\verify.ps1
 ```
 
 ## 安全默认
 
 - `doctor.ps1` 只探测，不修改工具链和硬件。
-- `generate.ps1` 只有存在 `.ioc` 时才运行。
+- `generate.ps1` 以已选定的 CubeMX 6.12.1 数据库重建工程。
 - `build.ps1` 只构建。
 - `flash.ps1` 必须显式传入 `-IUnderstandThisWillFlashHardware`。
 - 电机测试不包含在默认流水线中。
 - 所有未知硬件事实都必须记录，禁止按“常见 STM32 小车”猜测。
 
-## 推荐阶段
+## 当前里程碑
 
-- Phase 0：资料与环境审计
-- Phase 1：最小 CubeMX + Keil 工程
-- Phase 2：串口启动与四轮独立低速测试
-- Phase 3：编码器与单轮闭环
-- Phase 4：麦轮运动学与车辆动作
-- Phase 5：业务功能与 C25 参考迁移
+- Phase 0：资料与环境审计（完成）
+- Phase 1：CubeMX + Keil 基线（完成）
+- Phase 2：麦轮运动软件与失效停车（软件完成，待实物验收）
+- Phase 3：PS2/SWD 双模式遥控（软件完成，待实物验收）
+- 后续：上位机协议、实物验收和闭环功能
+
+详细入口见 [`docs/README.md`](docs/README.md)，当前任务见
+[`tasks/current.md`](tasks/current.md)。

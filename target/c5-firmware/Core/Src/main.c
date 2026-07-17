@@ -21,9 +21,12 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include "c5_control.h"
+#include "c5_control_config.h"
 #include "c5_motion.h"
 #include "c5_motion_config.h"
 #include "c5_motor_bus_hal.h"
+#include "c5_ps2_hal.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -49,6 +52,8 @@ UART_HandleTypeDef huart3;
 /* USER CODE BEGIN PV */
 static C5_MotorBusHal motor_bus;
 static C5_Motion motion;
+static C5_Control control;
+static C5_Ps2Hal ps2_hal;
 static uint8_t motion_initialized;
 /* USER CODE END PV */
 
@@ -59,11 +64,43 @@ static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
+static int C5_Key1Pressed(void);
+static void C5_StatusLedService(uint32_t now_ms);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static int C5_Key1Pressed(void)
+{
+  GPIO_PinState state;
+
+  state = HAL_GPIO_ReadPin(KEY1_N_GPIO_Port, KEY1_N_Pin);
+#if C5_KEY1_ACTIVE_LOW
+  return (state == GPIO_PIN_RESET) ? 1 : 0;
+#else
+  return (state == GPIO_PIN_SET) ? 1 : 0;
+#endif
+}
+
+static void C5_StatusLedService(uint32_t now_ms)
+{
+  GPIO_PinState output;
+
+  output = GPIO_PIN_SET;
+  if (C5_Control_GetState(&control) == C5_CONTROL_PS2)
+  {
+    if (C5_Control_GetRemoteState(&control) == C5_REMOTE_DISARMED)
+    {
+      output = ((now_ms / 250U) & 1U) ? GPIO_PIN_SET : GPIO_PIN_RESET;
+    }
+    else
+    {
+      output = GPIO_PIN_RESET;
+    }
+  }
+  HAL_GPIO_WritePin(STATUS_LED_N_GPIO_Port, STATUS_LED_N_Pin, output);
+}
 
 /* USER CODE END 0 */
 
@@ -107,6 +144,17 @@ int main(void)
   {
     Error_Handler();
   }
+  C5_Ps2Hal_Init(&ps2_hal);
+  C5_Control_Init(&control,
+                  &motion,
+                  C5_Ps2Hal_ReadFrame,
+                  &ps2_hal,
+                  C5_Ps2Hal_Enter,
+                  &ps2_hal,
+                  C5_Ps2Hal_Exit,
+                  &ps2_hal,
+                  C5_Key1Pressed(),
+                  HAL_GetTick());
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -116,7 +164,12 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    C5_Motion_Service(&motion, HAL_GetTick());
+    uint32_t now_ms;
+
+    now_ms = HAL_GetTick();
+    C5_Control_Service(&control, C5_Key1Pressed(), now_ms);
+    C5_Motion_Service(&motion, now_ms);
+    C5_StatusLedService(now_ms);
   }
   /* USER CODE END 3 */
 }
@@ -285,6 +338,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(STATUS_LED_N_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : KEY1_N_Pin */
+  GPIO_InitStruct.Pin = KEY1_N_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  HAL_GPIO_Init(KEY1_N_GPIO_Port, &GPIO_InitStruct);
+
 /* USER CODE BEGIN MX_GPIO_Init_2 */
 /* USER CODE END MX_GPIO_Init_2 */
 }
@@ -303,6 +362,7 @@ void Error_Handler(void)
   if (motion_initialized != 0U)
   {
     (void)C5_Motion_Stop(&motion, HAL_GetTick());
+    (void)C5_Ps2Hal_Exit(&ps2_hal);
   }
   __disable_irq();
   while (1)

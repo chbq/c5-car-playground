@@ -1,7 +1,7 @@
 # C5 Hardware Wiki
 
 This directory is the compact, evidence-backed wiki for the C5 firmware project.
-It describes the system before any CubeMX or Keil project is created.
+It covers the hardware baseline, generated firmware and current control design.
 
 ## Pages
 
@@ -15,6 +15,7 @@ It describes the system before any CubeMX or Keil project is created.
 | [acceptance.md](acceptance.md) | Acceptance gates for environment, build, flash and motors |
 | [official-tooling-notes.md](official-tooling-notes.md) | Local toolchain assumptions and pending verification |
 | [motion-control.md](motion-control.md) | Vendor motion evidence, HAL/App design, safety behavior and pending calibration |
+| [ps2-control.md](ps2-control.md) | PS2 protocol, SWD sharing, KEY1 mode switch and remote-control safety design |
 
 ## Current baseline
 
@@ -23,9 +24,13 @@ It describes the system before any CubeMX or Keil project is created.
 - Motor bus: USART3 on PB10/PB11 through the baseboard single-wire `DAT` circuit.
 - Wired PC and serial-boot path: CH340 through USART1 on PA9/PA10 at 115200 baud.
 - Optional independent host link: reserve USART2 on PA2/PA3, accessible from H1.
-- Debug: reserve SWD on PA13/PA14; PS2 use is deferred.
+- Debug/control: boot with SWD on PA13/PA14; a deliberate KEY1 long press may
+  release SWD and assign PA12-PA15 to PS2 until another long press or reset.
 - Project clock input: use the vendor-source 8 MHz HSE assumption and configure 72 MHz with PLL x9; revisit only if hardware behavior disagrees.
-- The CubeMX/Keil baseline and first unverified motion implementation build successfully; no firmware has been flashed and no motor has been driven.
+- The CubeMX/Keil baseline and first unverified motion implementation build
+  successfully. The PS2/SWD dual-mode implementation also passes host tests,
+  CubeMX regeneration and AC5 compilation. No firmware has been flashed and no
+  motor has been driven.
 
 ## Evidence labels
 

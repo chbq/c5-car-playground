@@ -1,9 +1,10 @@
 # Host-side tests
 
 `c5_motion_tests.c` compiles the production protocol, mecanum and motion-state
-sources with the local Visual Studio C compiler. It covers frame encoding,
-wheel-direction mapping, mecanum mixing and normalization, command expiry,
-fault-stop retry and tick wraparound.
+sources with the local Visual Studio C compiler. It covers motor framing,
+wheel-direction mapping, mecanum mixing, command expiry, fault-stop retry,
+tick wraparound, PS2 decoding and axis signs, neutral arming, dead-man control,
+link timeout and KEY1 long-press mode transitions.
 
 Run from the repository root:
 

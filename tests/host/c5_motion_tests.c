@@ -2,8 +2,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "c5_control.h"
 #include "c5_mecanum.h"
 #include "c5_motion.h"
+#include "c5_motion_config.h"
+#include "c5_ps2.h"
+#include "c5_remote.h"
 
 typedef struct
 {
@@ -12,6 +16,14 @@ typedef struct
     unsigned int write_count;
     unsigned int failures_remaining;
 } MockTransport;
+
+typedef struct
+{
+    uint8_t frame[C5_PS2_FRAME_SIZE];
+    unsigned int enter_count;
+    unsigned int exit_count;
+    unsigned int read_count;
+} MockControlIo;
 
 static int MockWrite(void *context, const uint8_t *data, size_t length)
 {
@@ -28,6 +40,43 @@ static int MockWrite(void *context, const uint8_t *data, size_t length)
     memcpy(mock->last_frame, data, length);
     mock->last_frame[length] = '\0';
     mock->last_length = length;
+    return 0;
+}
+
+static void MakeNeutralPs2Frame(uint8_t frame[C5_PS2_FRAME_SIZE])
+{
+    static const uint8_t neutral[C5_PS2_FRAME_SIZE] =
+        {0xFFU, 0x73U, 0x5AU, 0xFFU, 0xFFU,
+         0x80U, 0x80U, 0x80U, 0x80U};
+
+    memcpy(frame, neutral, sizeof(neutral));
+}
+
+static int MockEnterPs2(void *context)
+{
+    MockControlIo *io;
+
+    io = (MockControlIo *)context;
+    ++io->enter_count;
+    return 0;
+}
+
+static int MockExitPs2(void *context)
+{
+    MockControlIo *io;
+
+    io = (MockControlIo *)context;
+    ++io->exit_count;
+    return 0;
+}
+
+static int MockReadPs2(void *context, uint8_t frame[C5_PS2_FRAME_SIZE])
+{
+    MockControlIo *io;
+
+    io = (MockControlIo *)context;
+    ++io->read_count;
+    memcpy(frame, io->frame, C5_PS2_FRAME_SIZE);
     return 0;
 }
 
@@ -132,12 +181,144 @@ static void TestTickWraparound(void)
     assert(C5_Motion_GetState(&motion) == C5_MOTION_STOPPED);
 }
 
+static void TestPs2DecodeAndMapping(void)
+{
+    uint8_t frame[C5_PS2_FRAME_SIZE];
+    C5_Ps2State state;
+    int16_t vx;
+    int16_t vy;
+    int16_t wz;
+
+    MakeNeutralPs2Frame(frame);
+    assert(C5_Ps2_Decode(frame, sizeof(frame), &state) == 0);
+    assert(C5_Ps2_IsNeutral(&state, 8));
+    assert(!C5_Ps2_DeadmanPressed(&state));
+
+    frame[4] = (uint8_t)(frame[4] & 0xFBU);
+    frame[5] = 0U;
+    frame[7] = 255U;
+    frame[8] = 0U;
+    assert(C5_Ps2_Decode(frame, sizeof(frame), &state) == 0);
+    assert(C5_Ps2_DeadmanPressed(&state));
+    C5_Ps2_MapTwist(&state, 8, C5_MOTION_OUTPUT_LIMIT,
+                    &vx, &vy, &wz);
+    assert(vx == C5_MOTION_OUTPUT_LIMIT);
+    assert(vy == C5_MOTION_OUTPUT_LIMIT);
+    assert(wz == -C5_MOTION_OUTPUT_LIMIT);
+
+    frame[1] = 0x41U;
+    assert(C5_Ps2_Decode(frame, sizeof(frame), &state) != 0);
+}
+
+static void TestRemoteSafety(void)
+{
+    MockTransport mock = {{0}, 0U, 0U, 0U};
+    C5_Motion motion;
+    C5_Remote remote;
+    uint8_t frame[C5_PS2_FRAME_SIZE];
+
+    assert(C5_Motion_Init(&motion, MockWrite, &mock, NULL, 0U) == 0);
+    C5_Remote_Init(&remote, &motion, 0U);
+    MakeNeutralPs2Frame(frame);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 10U) == 0);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 20U) == 0);
+    assert(C5_Remote_GetState(&remote) == C5_REMOTE_DISARMED);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 30U) == 0);
+    assert(C5_Remote_GetState(&remote) == C5_REMOTE_READY);
+
+    frame[4] = (uint8_t)(frame[4] & 0xFBU);
+    frame[8] = 96U;
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 50U) == 0);
+    assert(C5_Remote_GetState(&remote) == C5_REMOTE_ACTIVE);
+    assert(C5_Motion_GetState(&motion) == C5_MOTION_MOVING);
+
+    MakeNeutralPs2Frame(frame);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 75U) == 0);
+    assert(C5_Remote_GetState(&remote) == C5_REMOTE_READY);
+    assert(strcmp(mock.last_frame, "#255P1500T0000!") == 0);
+
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 80U) == 0);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 90U) == 0);
+    frame[4] = (uint8_t)(frame[4] & 0xF7U);
+    frame[7] = 160U;
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 100U) == 0);
+    C5_Remote_Service(&remote, 249U);
+    assert(C5_Remote_GetState(&remote) == C5_REMOTE_ACTIVE);
+    C5_Remote_Service(&remote, 250U);
+    assert(C5_Remote_GetState(&remote) == C5_REMOTE_DISARMED);
+    assert(strcmp(mock.last_frame, "#255P1500T0000!") == 0);
+
+    frame[1] = 0x41U;
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 300U) != 0);
+    assert(C5_Remote_GetState(&remote) == C5_REMOTE_DISARMED);
+}
+
+static void TestRemoteTimeoutWraparound(void)
+{
+    MockTransport mock = {{0}, 0U, 0U, 0U};
+    C5_Motion motion;
+    C5_Remote remote;
+    uint8_t frame[C5_PS2_FRAME_SIZE];
+
+    assert(C5_Motion_Init(&motion, MockWrite, &mock, NULL, 0xFFFFFF00U) == 0);
+    C5_Remote_Init(&remote, &motion, 0xFFFFFF00U);
+    MakeNeutralPs2Frame(frame);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 0xFFFFFF10U) == 0);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 0xFFFFFF20U) == 0);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 0xFFFFFF30U) == 0);
+    frame[4] = (uint8_t)(frame[4] & 0xFBU);
+    frame[8] = 96U;
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 0xFFFFFFF0U) == 0);
+    C5_Remote_Service(&remote, 0x00000085U);
+    assert(C5_Remote_GetState(&remote) == C5_REMOTE_ACTIVE);
+    C5_Remote_Service(&remote, 0x00000086U);
+    assert(C5_Remote_GetState(&remote) == C5_REMOTE_DISARMED);
+}
+
+static void TestControlModeSwitch(void)
+{
+    MockTransport transport = {{0}, 0U, 0U, 0U};
+    MockControlIo io = {{0}, 0U, 0U, 0U};
+    C5_Motion motion;
+    C5_Control control;
+
+    MakeNeutralPs2Frame(io.frame);
+    assert(C5_Motion_Init(&motion, MockWrite, &transport, NULL, 0U) == 0);
+    C5_Control_Init(&control, &motion,
+                    MockReadPs2, &io,
+                    MockEnterPs2, &io,
+                    MockExitPs2, &io,
+                    0, 0U);
+
+    C5_Control_Service(&control, 1, 10U);
+    C5_Control_Service(&control, 1, 40U);
+    C5_Control_Service(&control, 1, 2039U);
+    assert(C5_Control_GetState(&control) == C5_CONTROL_DEBUG);
+    C5_Control_Service(&control, 1, 2040U);
+    assert(C5_Control_GetState(&control) == C5_CONTROL_PS2);
+    assert(io.enter_count == 1U);
+
+    C5_Control_Service(&control, 0, 2050U);
+    C5_Control_Service(&control, 0, 2080U);
+    assert(io.read_count == 1U);
+    C5_Control_Service(&control, 1, 2100U);
+    C5_Control_Service(&control, 1, 2130U);
+    assert(C5_Control_GetRemoteState(&control) == C5_REMOTE_DISARMED);
+    C5_Control_Service(&control, 1, 4130U);
+    assert(C5_Control_GetState(&control) == C5_CONTROL_DEBUG);
+    assert(io.exit_count == 1U);
+}
+
 int main(void)
 {
     TestProtocol();
     TestMecanum();
     TestTimeoutAndFaultStop();
     TestTickWraparound();
+    TestPs2DecodeAndMapping();
+    TestRemoteSafety();
+    TestRemoteTimeoutWraparound();
+    TestControlModeSwitch();
     puts("c5_motion_tests: PASS");
     return 0;
 }

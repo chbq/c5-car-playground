@@ -1,49 +1,52 @@
-# Current Task - Phase 2 Motion Software Baseline
+# Current Task - Phase 3 PS2 Remote Control
 
 Status: Complete; software verified without hardware
 
 ## Goal
 
-Use the C5 vendor case as behavioral evidence, then implement a clean HAL-based
-four-wheel mecanum motion layer with bounded commands and fail-safe stop logic.
-Do not flash hardware or drive motors.
+Implement one firmware image with a debug/SWD mode and an explicitly entered
+PS2 remote-control mode. Add KEY1 switching, runtime SWD release/restoration,
+HAL-based PS2 I/O, mecanum stick mapping, dead-man control and host tests. Do
+not flash hardware or drive motors.
 
-## Completed work
+## Planned work
 
-1. [x] Audited the C5 factory source for motor protocol, IDs, wheel order, polarity, primitives, UART setup and startup stop.
-2. [x] Added isolated `App/` protocol, mecanum, motion-state and HAL UART3 layers.
-3. [x] Added independent LF/RF/LR/RR speeds and unitless `vx/vy/wz` APIs.
-4. [x] Added forward, backward, strafe, rotate and explicit stop calls.
-5. [x] Added mandatory 1-1000 ms command expiry, active stop, fault latch and stop retry.
-6. [x] Centralized unverified IDs, wheel signs, output limit and timing parameters.
-7. [x] Added deterministic CubeMX-to-Keil App source synchronization.
-8. [x] Compiled and ran host tests with MSVC `/W4 /WX`.
-9. [x] Rebuilt the STM32 target with AC5.06u7: 0 errors, 0 warnings.
-10. [x] Documented evidence, architecture, API and raised-chassis acceptance requirements.
-11. [x] Repeated CubeMX quiet generation with the 6.12.1 database and preserved all USER CODE/App integration.
-12. [x] Ran the full no-flash verification pipeline: doctor, host tests, generation and AC5 build all passed.
+1. [x] Reconfirm vendor PS2 pins, request bytes, analog mode and data layout.
+2. [x] Document the two runtime modes, transition order, controls and test boundary.
+3. [x] Add PA8 KEY1 to CubeMX while preserving SWD as the boot configuration.
+4. [x] Implement PS2 protocol decoding and remote-control policy as host-testable code.
+5. [x] Implement HAL GPIO bit-bang and reversible SWD/PS2 pin switching.
+6. [x] Integrate KEY1 long press, neutral arming, dead-man and stop behavior.
+7. [x] Run host tests, CubeMX generation and AC5 build.
+8. [x] Update documentation and task report with final evidence.
 
-## Current firmware behavior
+## Required behavior
 
-- USART3 is initialized by generated HAL code.
-- Startup immediately sends `#255P1500T0000!`.
-- The main loop services motion expiry and fault-stop retries.
-- No movement command is issued automatically.
-- No upstream serial command parser is enabled.
+- Reset starts with SWD available and sends the existing broadcast stop.
+- A 2-second KEY1 hold stops first, releases SWD and enters PS2 mode.
+- Valid neutral frames arm the remote; L1 or R1 is the dead-man control.
+- Left X/Y and right X map to `vy/vx/wz` through `C5_Motion` only.
+- Invalid/lost frames, dead-man release, KEY1 press and mode exit stop motion.
+- A second long press releases the PS2 pins and restores SWD.
 
-## CubeMX automation resolution
+## Constraints
 
-The first quiet runs stalled because `.ioc` retained
-`ProjectManager.AskForMigrate=true`; the GUI normally answers this with the
-"continue as 6.12" dialog, but quiet mode cannot. `generate.ps1` now persists
-the already chosen 6.12.1 no-migration setting before and after generation,
-requires CubeMX `OK`/`Bye bye` markers, checks that the MDK project was
-refreshed, and then synchronizes the App group. Repeated unattended generation
-now exits normally.
+- KEY1 pull-up/active-low is an explicit software assumption pending measurement.
+- Disconnect an active ST-LINK before PS2 mode because PA13/PA14 become outputs.
+- Reset and connect-under-reset remain recovery routes.
+- No automatic flash, serial-port access or motor command is part of verification.
+
+## Verification result
+
+- `tools/test-host.ps1`: exit 0 under MSVC `/W4 /WX`.
+- `tools/generate.ps1`: exit 0; eight App sources synchronized.
+- `tools/build.ps1 -Rebuild`: exit 0; AC5.06u7, 0 errors, 0 warnings.
+- `tools/verify.ps1`: exit 0 across doctor, tests, generation and build.
+- Program size: Code 5448, RO-data 296, RW-data 36, ZI-data 1940 bytes.
+- No flash, serial-port access or motor command was performed.
 
 ## Next vertical task
 
-Perform flash/boot and raised-chassis single-wheel acceptance as a separately
-authorized task. Only after wheel IDs,
-physical signs and communication-loss behavior pass should a host command
-protocol be connected to the movement API.
+Perform explicit hardware acceptance: measure KEY1 polarity, validate the PS2
+receiver and mode indication without motor power, verify SWD recovery, then run
+raised-chassis low-speed dead-man and communication-loss stop tests.

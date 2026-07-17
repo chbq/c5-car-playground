@@ -88,15 +88,17 @@ if that also fails, retries every 100 ms. New motion is rejected until
 
 `C5_Motion_CommandWheels()` supports independent LF/RF/LR/RR logical speeds.
 `C5_Motion_CommandTwist()` and the named forward, backward, strafe and rotate
-calls use the mixer. The main loop currently invokes only initialization and
-`C5_Motion_Service()`; no autonomous movement is scheduled.
+calls use the mixer. The main loop initializes and services this layer; the
+optional PS2 controller reaches it only through `C5_Motion_CommandTwist()` and
+`C5_Motion_Stop()`. No autonomous movement is scheduled.
 
 ## Verification completed without hardware
 
 - Production protocol, mixer and state-machine sources compile and run as
   host tests with MSVC `/W4 /WX`.
 - Tests cover exact frame strings, vendor wheel signs, primitives,
-  normalization, deadline stop, failed-stop retry and 32-bit tick wraparound.
+  normalization, deadline stop, failed-stop retry, 32-bit tick wraparound and
+  the PS2 remote policy layered above the motion API.
 - The complete STM32 target rebuilds with AC5.06u7 at 0 errors and 0 warnings.
 - CubeMX quiet generation completes on the pinned 6.12.1 project database;
   the script persists the user's no-migration choice before and after the run.
