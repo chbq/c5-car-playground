@@ -2,11 +2,16 @@
 
 #include "c5_control_config.h"
 
+/** @brief Compare a 32-bit deadline with signed subtraction across tick wrap. */
 static int C5_TimeReached(uint32_t now_ms, uint32_t deadline_ms)
 {
     return ((int32_t)(now_ms - deadline_ms) >= 0) ? 1 : 0;
 }
 
+/**
+ * @brief  Debounce KEY1 and stop on its raw press edge while in PS2 mode.
+ * @note Long-press timing starts when the pressed state becomes stable.
+ */
 static void C5_Control_UpdateKey(C5_Control *control,
                                  uint8_t pressed,
                                  uint32_t now_ms)

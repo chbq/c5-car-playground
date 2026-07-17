@@ -13,6 +13,7 @@
 #define C5_PS2_EDGE_DELAY_US   10U
 #define C5_PS2_SELECT_DELAY_US 10U
 
+/** @brief Busy-wait in microseconds with DWT CYCCNT without yielding the CPU. */
 static void C5_Ps2Hal_DelayUs(const C5_Ps2Hal *hal, uint32_t delay_us)
 {
     uint32_t start;
@@ -25,6 +26,7 @@ static void C5_Ps2Hal_DelayUs(const C5_Ps2Hal *hal, uint32_t delay_us)
     }
 }
 
+/** @brief Exchange one LSB-first byte, driving CMD low-edge to DAT high-edge. */
 static uint8_t C5_Ps2Hal_Transfer(C5_Ps2Hal *hal, uint8_t value)
 {
     uint8_t received;

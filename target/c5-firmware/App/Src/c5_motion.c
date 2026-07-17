@@ -3,6 +3,7 @@
 #include "c5_mecanum.h"
 #include "c5_motion_config.h"
 
+/** @brief Compare a 32-bit deadline with signed subtraction across tick wrap. */
 static int C5_TimeReached(uint32_t now_ms, uint32_t deadline_ms)
 {
     return ((int32_t)(now_ms - deadline_ms) >= 0) ? 1 : 0;
@@ -37,6 +38,7 @@ static int16_t C5_SpeedMagnitude(int16_t speed)
     return (int16_t)magnitude;
 }
 
+/** @brief Encode and transmit a broadcast stop, recording its confirmation. */
 static int C5_SendStop(C5_Motion *motion)
 {
     char frame[C5_MOTOR_SINGLE_FRAME_SIZE + 1U];
@@ -55,6 +57,7 @@ static int C5_SendStop(C5_Motion *motion)
     return 0;
 }
 
+/** @brief Latch a fault, schedule a retry, and immediately attempt one stop. */
 static void C5_EnterFault(C5_Motion *motion, uint32_t now_ms)
 {
     motion->state = C5_MOTION_FAULT;

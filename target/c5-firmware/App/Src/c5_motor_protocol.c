@@ -33,6 +33,7 @@ static void C5_Write4(char *output, uint16_t value)
     output[3] = (char)('0' + (value % 10U));
 }
 
+/** @brief Write a fixed 15-byte #dddPddddTdddd! command without a terminator. */
 static void C5_WriteCommand(char *output,
                             uint8_t id,
                             uint16_t pulse,

@@ -4,6 +4,7 @@
 #include "c5_motion_config.h"
 #include "c5_ps2.h"
 
+/** @brief Compare a 32-bit deadline with signed subtraction across tick wrap. */
 static int C5_TimeReached(uint32_t now_ms, uint32_t deadline_ms)
 {
     return ((int32_t)(now_ms - deadline_ms) >= 0) ? 1 : 0;

@@ -9,6 +9,7 @@ static int C5_Abs(int value)
     return (value < 0) ? -value : value;
 }
 
+/** @brief Apply a center deadzone and scale the remaining axis travel. */
 static int16_t C5_MapAxis(int value, int deadzone, int16_t limit)
 {
     int magnitude;
