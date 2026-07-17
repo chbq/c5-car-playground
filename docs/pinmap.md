@@ -1,21 +1,21 @@
-# C5 Pin and Peripheral Budget
+# C5 引脚与外设预算
 
-## Goal-driven reservation
+## 资源分配
 
-| Priority | Function | MCU resource | Board path | Policy |
+| 优先级 | 功能 | MCU 资源 | 板级路径 | 策略 |
 |---|---|---|---|---|
-| Fixed | Wired PC, log and serial boot | USART1 PA9/PA10 | CH340 and USB connector | Keep |
-| Fixed | Four-wheel motor bus | USART3 PB10/PB11 | H1 to baseboard DAT circuit | Keep |
-| Conditional | Debug/programming | PA13 SWDIO, PA14 SWCLK | H1 pins 11/12 | Keep at boot; release only after KEY1 long press for PS2 mode |
-| Reserved | Independent host expansion | USART2 PA2/PA3 | H1 pins 26/24 | Reserve for Bluetooth, TTL UART or RS485 |
-| Reserved if RS485 | Driver direction | PA11 candidate | H1 pin 14 / KEY2 net | Reserve until transceiver choice |
-| Board-owned | External Flash | SPI2 PB12-PB15 | W25Q64; PB13 also LED | Preserve initially |
+| 固定 | USB 上位机、日志、串口下载 | USART1 PA9/PA10 | CH340、USB | 保留 |
+| 固定 | 四轮电机总线 | USART3 PB10/PB11 | H1 → DAT 电路 | 保留 |
+| 条件复用 | 调试/烧录 | PA13 SWDIO、PA14 SWCLK | H1 11/12 | 上电保留；KEY1 长按后才交给 PS2 |
+| 预留 | 独立上位机 | USART2 PA2/PA3 | H1 26/24 | 蓝牙、TTL UART 或 RS485 |
+| RS485 可选 | 收发方向 | 候选 PA11 | H1 14 / KEY2 | 选定收发器前保留 |
+| 板载占用 | 外部 Flash | SPI2 PB12–PB15 | W25Q64；PB13 兼作 LED | 暂保留 |
 
-## H1 connector
+## H1 接口
 
-The schematic numbers H1 as two 16-pin rows. Confirm physical pin-1 orientation from silk or continuity before making a cable.
+H1 为两排各 16 针。制作线缆前用丝印或通断确认 1 脚方向。
 
-| H1 | Net | MCU | H1 | Net | MCU |
+| H1 | 网络 | MCU | H1 | 网络 | MCU |
 |---:|---|---|---:|---|---|
 | 1 | KEY1 | PA8 | 32 | TXD3 | PB10 |
 | 2 | IR | PA8 | 31 | RXD3 | PB11 |
@@ -34,49 +34,47 @@ The schematic numbers H1 as two 16-pin rows. Confirm physical pin-1 orientation 
 | 15 | GND | - | 18 | VCC-3.3 | - |
 | 16 | GND | - | 17 | VCC-5.0 | - |
 
-PA8 is physically shared by KEY1 and IR. Sensor connectors S1 and S2 cross-connect the same PA0/PA1 pair and are not four independent signals.
+PA8 同时标为 KEY1 和 IR。S1/S2 交叉复用同一对 PA0/PA1，并非四路独立信号。
 
-## Other MCU connections
+## 其他板载连接
 
-| MCU pin(s) | Connection | Constraint |
+| MCU 引脚 | 连接 | 约束 |
 |---|---|---|
-| PA9/PA10 | CH340 USART1 | Not on H1; fixed diagnostic/download path |
-| PB2/BOOT1 | Grounded in core schematic | Not available as a free GPIO |
-| PB12/PB13/PB14/PB15 | W25Q64 NSS/SCK/MISO/MOSI | SPI2; PB13 also drives active-low LED |
-| PD0/PD1 | 8 MHz HSE crystal | Value comes from vendor source and is accepted as the project input |
-| PC13/PC14/PC15 | Marked not connected | Not available without hardware modification |
-| BOOT0/NRST | Automatic serial-download and reset circuits | Not exposed on H1 |
+| PA9/PA10 | CH340 USART1 | 不在 H1；固定诊断/下载链路 |
+| PB2/BOOT1 | 原理图接地 | 不作普通 GPIO |
+| PB12–PB15 | W25Q64 SPI2 | PB13 兼作低电平亮 LED |
+| PD0/PD1 | 8 MHz HSE | 已接受为工程输入 |
+| PC13–PC15 | 标为未连接 | 不改板时不可用 |
+| BOOT0/NRST | 自动下载/复位电路 | 未引到 H1 |
 
-## Sensor connectors
+## 传感器接口
 
-Each connector carries two direct MCU signals, GND and selectable `VCC_Sensor` (3.3 V or 5 V).
+每口含两路 MCU 信号、GND 和可选 3.3/5 V `VCC_Sensor`。
 
-| Connector | Signals | Vendor example |
+| 接口 | 信号 | 商家示例 |
 |---|---|---|
-| S1 | PA0, PA1 | Dual line-tracking sensor, digital high/low |
-| S2 | PA1, PA0 | Duplicate/crossed access to S1 signals |
-| S3 | PA2, PB0 | Ultrasonic module |
-| S4 | PA3, PB1 | No baseline assignment |
-| S5 | PA4, PA6 | No baseline assignment |
-| S6 | PA5, PA7 | No baseline assignment |
+| S1 | PA0、PA1 | 双路数字巡线 |
+| S2 | PA1、PA0 | 与 S1 重复/交叉 |
+| S3 | PA2、PB0 | 超声波 |
+| S4 | PA3、PB1 | 未固定 |
+| S5 | PA4、PA6 | 未固定 |
+| S6 | PA5、PA7 | 未固定 |
 
-All ten unique signal pins are ADC-capable on STM32F103C8T6, but the vendor examples also use them as digital GPIO. `SSA` and `SSD` are schematic net names; vendor documentation does not prove that one is always analog and the other always digital.
+10 个唯一信号脚都支持 ADC，也可作数字 GPIO。`SSA`/`SSD` 只是网络名，不能据此断言模拟/数字用途。底板未见电平转换，5 V 供电传感器仍须保证输出对 MCU 安全。
 
-The baseboard contains no visible signal-level conversion on these lines. A sensor powered from 5 V must still present MCU-safe signal levels.
+## 外设冲突
 
-## Peripheral alternatives and conflicts
-
-| Peripheral | Candidate pins | Board-level conflict |
+| 外设 | 候选引脚 | 冲突 |
 |---|---|---|
-| USART2 | PA2/PA3 | Sensor3 `SSA3` and Sensor4 `SSA4` |
-| SPI1 | PA4-PA7 | Sensor5/6 signals |
-| I2C1 | PB6/PB7 or remap PB8/PB9 | PWM-servo outputs DJ3/DJ4 or DJ1/DJ2 |
-| I2C2 | PB10/PB11 | Motor bus; unavailable |
-| TIM1 channels | PA8-PA11 | IR/KEY1, CH340 and KEY2 |
-| TIM2 channels | PA0-PA3 | Sensors and reserved USART2 |
-| TIM3 channels | PA6/PA7/PB0/PB1 | Sensor signals |
-| TIM4 channels | PB6-PB9 | Four PWM-servo outputs; valuable deferred resource |
-| CAN | PA11/PA12 or remap PB8/PB9 | KEY2/PS2 or servo outputs; no onboard transceiver |
-| Native USB | PA11/PA12 | No connection to the board USB socket, which terminates at CH340 |
+| USART2 | PA2/PA3 | S3 `SSA3`、S4 `SSA4` |
+| SPI1 | PA4–PA7 | S5/S6 |
+| I2C1 | PB6/PB7 或 PB8/PB9 重映射 | DJ3/DJ4 或 DJ1/DJ2 |
+| I2C2 | PB10/PB11 | 电机总线，不可用 |
+| TIM1 | PA8–PA11 | IR/KEY1、CH340、KEY2 |
+| TIM2 | PA0–PA3 | 传感器、USART2 |
+| TIM3 | PA6/PA7/PB0/PB1 | 传感器 |
+| TIM4 | PB6–PB9 | 四路舵机口，暂保留 |
+| CAN | PA11/PA12 或 PB8/PB9 重映射 | KEY2/PS2 或舵机口；板上无收发器 |
+| 原生 USB | PA11/PA12 | 板载 USB 实际接 CH340 |
 
-Official MCU alternate-function reference: [STM32F103x8/B datasheet](https://www.st.com/resource/en/datasheet/CD00161566.pdf).
+MCU 复用功能参考：[STM32F103x8/B 数据手册](https://www.st.com/resource/en/datasheet/CD00161566.pdf)。

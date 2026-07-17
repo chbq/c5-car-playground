@@ -1,80 +1,48 @@
-# PS2 Remote Control and SWD Sharing
+# PS2 遥控与 SWD 复用
 
-## Scope
+## 模式
 
-One firmware image supports two runtime modes. Reset always returns to the
-debug-safe mode; no option bytes or persistent boot setting are changed.
+同一固件支持两种运行模式。复位始终回到调试安全模式，不修改选项字节或持久启动设置。
 
-| Mode | PA12 | PA13 | PA14 | PA15 | Vehicle behavior |
+| 模式 | PA12 | PA13 | PA14 | PA15 | 行为 |
 |---|---|---|---|---|---|
-| Debug | Free | SWDIO | SWCLK | Free | Startup stop; no remote motion |
-| PS2 control | CLK | ATT | CMD | DAT | Bounded commands from a valid controller frame |
+| 调试 | 空闲 | SWDIO | SWCLK | 空闲 | 上电停车，不接受遥控动作 |
+| PS2 | CLK | ATT | CMD | DAT | 只执行有效手柄帧产生的限时动作 |
 
-The PS2 layer calls only the public `C5_Motion` API. It never writes motor-bus
-frames directly.
+PS2 层只调用 `C5_Motion` API，不直接写电机帧。
 
-## Evidence and assumptions
+## 证据与假设
 
-The C5 schematic and vendor source agree on PA12 CLK, PA13 ATT, PA14 CMD and
-PA15 DAT. The vendor implementation polls nine bytes with `0x01, 0x42` and
-uses analog-mode byte `0x73`; its wheel example reads the standard RY and LY
-positions every 50 ms.
+- 原理图和商家源码一致：PA12 CLK、PA13 ATT、PA14 CMD、PA15 DAT。
+- 商家以 `0x01, 0x42` 轮询 9 字节，模拟模式为 `0x73`，周期约 50 ms。
+- 原理图/注释称 KEY1 为 PA8，但商家 GPIO 初始化又把 PA8 配为输出。当前集中配置为输入上拉、低电平按下，待实测。
 
-KEY1 is labeled PA8 by the schematic and vendor comments, but the extracted
-vendor GPIO setup later configures PA8 as an output. Until measured, the new
-firmware treats KEY1 polarity as a configurable assumption: input pull-up,
-active low.
+## 切换流程
 
-## Mode transitions
+1. 上电处于调试模式，SWD 有效，PS2 GPIO 未初始化。
+2. KEY1 长按 2 秒：先停车，再关闭 SWJ、初始化 PS2 GPIO。
+3. 连续收到 3 帧有效、中位且 dead-man 松开的数据后解锁。
+4. PS2 模式下 KEY1 一按即停车；继续按满 2 秒则退出。
+5. 退出时停止轮询、置总线空闲、反初始化 PA12–PA15，再恢复 `SWJ_NOJTAG`。
+6. 复位可无条件回到调试模式。
 
-1. Boot in debug mode with SWD enabled and PS2 pins uninitialized.
-2. Hold KEY1 for 2 seconds to request PS2 mode.
-3. Send a stop, indicate the transition on PB13, disable SWJ, then initialize
-   the four PS2 GPIOs.
-4. Require several consecutive valid, neutral, dead-man-released frames before
-   accepting control.
-5. In PS2 mode, any KEY1 press immediately requests stop. Continuing to hold it
-   for 2 seconds exits PS2 mode.
-6. On exit, stop polling, drive the PS2 bus idle, deinitialize PA12-PA15, then
-   restore SWD (`SWJ_NOJTAG`). A connected debugger may need to reconnect.
-7. Reset is the unconditional recovery path back to debug mode.
+进入 PS2 前应断开正在驱动 PA13/PA14 的 ST-LINK，否则可能产生电气冲突；固件无法可靠检测探针是否连接。
 
-An attached, actively driving ST-LINK can electrically contend with PA13/PA14
-after SWD is released. Disconnect the probe before entering PS2 mode. Firmware
-cannot reliably detect that cable state.
+## 操作与停车条件
 
-## Controls and stop conditions
+- 左摇杆 Y：`vx` 前后
+- 左摇杆 X：`vy` 横移
+- 右摇杆 X：`wz` 旋转
+- 按住 L1 或 R1：dead-man 使能
+- dead-man 松开、帧无效、150 ms 丢帧、KEY1 按下、模式切换或运动层故障：停车
 
-- Left stick Y: longitudinal velocity `vx`.
-- Left stick X: lateral velocity `vy`.
-- Right stick X: yaw rate `wz`.
-- L1 or R1 held: dead-man enable.
-- Dead-man released, invalid frame, link timeout, KEY1 press, transition or
-  motion-layer fault: stop.
+摇杆带死区，三轴按现有输出上限缩放；动作只由后续有效帧续期。
 
-Stick centers use a dead zone and the three axes are scaled to the existing
-motion output limit. Every accepted command has a short hold deadline and is
-refreshed only by subsequent valid frames.
+## 软件验证
 
-## Verification boundary
+- 只接受模式 `0x73`/`0x79` 且标记为 `0x5A` 的帧。
+- 主机测试覆盖轴方向、限幅、中位解锁、L1/R1、松手停车、坏帧、150 ms 超时、tick 回绕和双向长按切换。
+- CubeMX 将 PA8 生成为上拉输入 `KEY1_N`，上电 SYS 配置仍为 SWD。
+- AC5.06u7 完整构建 0 error、0 warning。
 
-Host tests can prove frame decoding, axis signs, dead zone, dead-man behavior,
-arming and timeout transitions. CubeMX generation and AC5 compilation can
-prove integration. They cannot prove controller electrical timing, KEY1
-polarity, probe contention, wheel IDs or physical motion; those remain later
-hardware acceptance items.
-
-## Software verification result
-
-- The decoder accepts analog IDs `0x73` and `0x79` only with reply marker
-  `0x5A` and rejects malformed frames.
-- Host tests cover axis signs, full-scale limiting, neutral arming, either
-  shoulder dead-man, release stop, invalid-frame stop, 150 ms timeout,
-  32-bit tick wraparound and both KEY1 long-press transitions.
-- CubeMX regenerates PA8 as `KEY1_N` input pull-up while keeping SWD as the
-  boot-time SYS debug selection.
-- Keil AC5.06u7 rebuilds the complete target with zero errors and warnings.
-
-These results verify software behavior only. KEY1 polarity, PS2 electrical
-timing, receiver compatibility, LED indication, SWD reconnection and physical
-vehicle motion have not been tested.
+尚未实测 KEY1 极性、PS2 时序/兼容性、LED、SWD 重连和车辆动作。

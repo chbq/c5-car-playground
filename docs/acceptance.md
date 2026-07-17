@@ -1,60 +1,59 @@
-# Acceptance Gates
+# 验收门槛
 
-## Gate 0 - Ready to create the project
+## 门槛 0：建项准备
 
-- [x] Requirements, system architecture and pin budget documented
-- [x] Exact MCU identified as STM32F103C8T6
-- [x] Vendor package contains no reusable `.ioc`
-- [x] HSE set to 8 MHz from vendor source and accepted as the project input
-- [x] H1 and SWD mapping documented; physical cable verification deferred to connection time
-- [x] Vendor schematic revisions accepted unless hardware behavior disagrees
-- [x] Git repository initialized on `main` and synchronized to the private remote
-- [x] Vendor evidence is ignored, protected by repository policy and was not copied into firmware
+- [x] 已记录需求、系统结构和引脚预算
+- [x] MCU 确认为 STM32F103C8T6
+- [x] 商家资料中没有可复用的 `.ioc`
+- [x] 采用商家源码中的 8 MHz HSE
+- [x] 已记录 H1 与 SWD 映射，线缆实测推迟到接线时
+- [x] 暂按商家原理图版本实施，实物不符时再修订
+- [x] Git `main` 已同步至私有远端
+- [x] 商家资料受仓库规则保护，未复制进固件
 
-## Gate A - Environment ready
+## 门槛 A：环境
 
-- [x] CubeMX 6.18.0-RC3 runtime resolved; project remains on the 6.12.1 compatibility database
-- [x] Keil UV4 5.38 executable resolved
-- [x] STM32CubeProgrammer CLI 2.16.0 resolved
-- [x] Ignored project-local environment file created
-- [x] STM32CubeF1 1.8.7 and Keil STM32F1xx DFP 2.4.1 pinned
-- [x] Installed DFP contains STM32F103C8
-- [x] ARM Compiler 5.06u7 selected for the first C5 baseline; AC6.19 retained for later compatibility builds
-- [x] Enhanced doctor completed with exit code 0
+- [x] CubeMX 运行时 6.18.0-RC3；工程保持 6.12.1 兼容数据库
+- [x] Keil µVision 5.38、CubeProgrammer 2.16.0 已定位
+- [x] 本机路径写入忽略的 `tools/local.env.ps1`
+- [x] 固定 STM32CubeF1 1.8.7、STM32F1xx DFP 2.4.1
+- [x] DFP 包含 STM32F103C8
+- [x] 首版使用 AC5.06u7；保留 AC6.19
+- [x] `doctor.ps1` 退出码为 0
 
-## Gate B - Minimal target project
+## 门槛 B：最小工程
 
-- [x] `.ioc` loads and regenerates the MDK-ARM project
-- [x] Keil AC5 target rebuilds with zero errors and zero warnings
-- [x] output image path is known
-- [ ] reset/startup leaves every motor channel inactive
-- [x] diagnostic UART configuration is documented
-- [x] no hardware behavior is claimed without testing
+- [x] `.ioc` 可重新生成 MDK-ARM 工程
+- [x] AC5 重建 0 error、0 warning
+- [x] 固件输出路径明确
+- [ ] 实测复位/上电时所有电机均不动作
+- [x] 已记录诊断串口配置
+- [x] 未把编译通过等同于硬件可用
 
-## Gate C - Flash and boot
+## 门槛 C：烧录与启动
 
-- [ ] explicit flash confirmation used
-- [ ] programmer connects over SWD
-- [ ] image verifies
-- [ ] reset completes
-- [ ] boot message is observed
+- [ ] 使用显式烧录确认参数
+- [ ] 调试器通过 SWD 连接
+- [ ] 镜像写入并校验
+- [ ] 复位启动正常
+- [ ] 收到启动诊断信息
 
-## Gate D - Motor bring-up
+## 门槛 D：电机
 
-- [ ] chassis is raised
-- [ ] each wheel mapping is physically verified
-- [ ] both directions tested at low duty
-- [ ] bounded runtime and automatic stop work
-- [ ] communication-loss stop works
+- [ ] 架空底盘
+- [ ] 实测四轮 ID 与位置
+- [ ] 低速验证每轮正反转
+- [ ] 验证限时动作和自动停车
+- [ ] 验证通信丢失停车
 
-## Gate E - PS2 remote control
+## 门槛 E：PS2 遥控
 
-- [x] PA8 KEY1 input and boot-time SWD allocation regenerate from CubeMX
-- [x] PS2 protocol, mapping and mode policy pass host tests with warnings as errors
-- [x] Complete target builds with AC5 at zero errors and zero warnings
-- [ ] KEY1 idle and pressed polarity measured on the installed board
-- [ ] ST-LINK disconnected before PA13/PA14 are reassigned
-- [ ] Receiver reports consecutive valid neutral analog frames
-- [ ] Short KEY1 press, dead-man release and receiver disconnect each stop the car
-- [ ] Long KEY1 press releases PS2 GPIO and SWD reconnects after probe refresh
-- [ ] Stick directions are accepted with the chassis raised and low speed limit
+- [x] CubeMX 可生成 PA8 KEY1 输入和上电 SWD 配置
+- [x] PS2 协议、映射和模式策略通过 `/W4 /WX` 主机测试
+- [x] 完整目标以 AC5 0 error、0 warning 构建
+- [ ] 测量 KEY1 空闲/按下电平
+- [ ] 切换 PA13/PA14 前断开 ST-LINK
+- [ ] 接收器连续返回有效的模拟中位帧
+- [ ] KEY1 短按、dead-man 松开、接收器断开均能停车
+- [ ] KEY1 长按退出后可重新连接 SWD
+- [ ] 架空低速验证三轴方向

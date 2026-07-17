@@ -1,62 +1,49 @@
-# C5 Motion Control
+# C5 运动控制
 
-## Current status
+## 状态
 
-The first HAL-based motion implementation exists and builds, but it has not
-been flashed or tested on the car. Firmware startup sends only the vendor's
-broadcast stop command. No demo motion or host command parser is enabled.
+HAL 运动层已实现并通过软件验证，尚未烧录和实车测试。上电只发送广播停车，不自动运动，也未启用上位机命令解析。
 
-## Vendor behavior audit
+## 商家行为证据
 
-Primary source: `Carbot(C5)-STM32智能车出厂程序-250518.zip`, stored under the
-ignored, read-only `reference/c5-vendor/` tree. Paths below are inside that ZIP.
+主来源：只读资料中的 `Carbot(C5)-STM32智能车出厂程序-250518.zip`。下列路径位于压缩包内。
 
-| Evidence | Vendor implementation | Project conclusion |
+| 证据 | 商家实现 | 本项目结论 |
 |---|---|---|
-| `USER/z_main.c:228-237` | USART3 starts at 115200 and sends `#255P1500T2000!` | Keep an active broadcast stop immediately after UART3 initialization |
-| `USER/z_main.c:521-529` | `car_run(lf, rf, lr, rr)` accepts `-1000..1000` | Use logical wheel order LF, RF, LR, RR and clamp the protocol range |
-| `USER/z_main.c:526-528` | Group frame uses IDs 006, 007, 008, 009 and `T0000` | Send all four wheel targets atomically as one brace-delimited frame |
-| `USER/z_main.c:526-528` | Left pulse is `1500+speed`; right pulse is `1500-speed` | Default signs are `+ - + -`; physical polarity still requires a raised-wheel test |
-| `USER/z_main.c:413-435` | Forward, reverse, turn and strafe combinations are explicit | Preserve those logical combinations in the mecanum mixer |
-| `src/z_usart.c:109-151` | PB10/PB11, 115200, 8N1, TX and RX enabled | Current CubeMX USART3 allocation matches the vendor case |
-| `src/z_usart.c:204-217` | Bytes are sent synchronously, waiting for TXE | A blocking HAL transmit is sufficient for the first version |
+| `USER/z_main.c:228-237` | USART3 115200，启动发送 `#255P1500T2000!` | USART3 初始化后主动广播停车 |
+| `USER/z_main.c:521-529` | `car_run(lf, rf, lr, rr)` 范围 `-1000..1000` | 轮序 LF/RF/LR/RR，协议限幅 |
+| `USER/z_main.c:526-528` | ID 006–009，组帧用 `T0000` | 四轮目标合并成一帧发送 |
+| `USER/z_main.c:526-528` | 左轮 `1500+speed`，右轮 `1500-speed` | 默认符号 `+ - + -`，待架空实测 |
+| `USER/z_main.c:413-435` | 明确给出前后、旋转、横移组合 | 麦轮混控保持相同逻辑 |
+| `src/z_usart.c:109-151` | PB10/PB11，115200，8N1，收发开启 | CubeMX USART3 配置一致 |
+| `src/z_usart.c:204-217` | 同步等待 TXE 发送 | 首版用阻塞式 HAL 发送即可 |
 
-The vendor source also mirrors motor traffic onto USART1 for observation. The
-new implementation does not do this because diagnostic framing has not yet
-been designed.
+商家代码会把电机数据镜像到 USART1；本项目尚未定义诊断帧，因此不复制该行为。
 
-## Protocol model
+## 协议
 
-Single raw command:
+单条指令：
 
 ```text
 #006P1500T0000!
 ```
 
-Four-wheel command:
+四轮组帧：
 
 ```text
 {#006P1500T0000!#007P1500T0000!#008P1500T0000!#009P1500T0000!}
 ```
 
-- `P1500` is stop; the supported vendor range is `P0500..P2500`.
-- ID 255 is the broadcast address used for startup and emergency stop.
-- Drive commands use `T0000`, matching the vendor's continuous wheel-speed
-  implementation. The physical meaning and units of nonzero `T` remain
-  unresolved, so the raw single-command formatter is not treated as a
-  calibrated position API.
-- The application timeout is independent of `T`: it actively transmits a stop
-  when a command is not refreshed before its deadline.
+- `P1500` 停车，商家范围 `P0500..P2500`。
+- ID 255 用于广播停车。
+- 运行指令沿用 `T0000`；非零 `T` 的物理单位未确认。
+- 软件超时独立于 `T`，到期主动发送停车。
 
-## Coordinate and wheel model
+## 坐标与轮速
 
-Logical axes are deliberately unitless until the car is calibrated:
-
-- `vx > 0`: forward;
-- `vy > 0`: strafe right;
-- `wz > 0`: clockwise viewed from above.
-
-The mixer is:
+- `vx > 0`：前进
+- `vy > 0`：右移
+- `wz > 0`：俯视顺时针
 
 ```text
 LF = vx + vy + wz
@@ -65,57 +52,37 @@ LR = vx - vy + wz
 RR = vx + vy - wz
 ```
 
-When any magnitude exceeds the configured limit, all four outputs are scaled
-by the same factor. `c5_motion_config.h` centralizes wheel IDs, polarity,
-initial output limit, maximum hold time, UART timeout and stop-retry interval.
-The current output limit is 700, matching the vendor demo's normal car speed;
-the protocol hard limit remains 1000.
+超限时四轮同比缩放。`c5_motion_config.h` 集中保存轮 ID、极性、输出上限、保持时间、UART 超时和停车重试参数。当前输出上限 700，协议硬上限 1000。
 
-## Software layers and API
+## 软件分层
 
-| Layer | Responsibility |
+| 层 | 职责 |
 |---|---|
-| `c5_motor_protocol` | Validate and encode raw single and grouped motor frames |
-| `c5_mecanum` | Convert unitless `vx/vy/wz` into normalized LF/RF/LR/RR targets |
-| `c5_motion` | Named movement calls, independent four-wheel command, deadline stop and fault latch |
-| `c5_motor_bus_hal` | Blocking `HAL_UART_Transmit()` adapter for USART3 |
+| `c5_motor_protocol` | 校验并编码单条/四轮帧 |
+| `c5_mecanum` | `vx/vy/wz` → LF/RF/LR/RR，并归一化 |
+| `c5_motion` | 运动 API、限时停车、故障锁存 |
+| `c5_motor_bus_hal` | USART3 阻塞式 `HAL_UART_Transmit()` 适配 |
 
-Every nonzero motion call requires a hold time from 1 to 1000 ms. The caller
-must refresh a continuing command. A missed deadline sends broadcast stop.
-A transport error latches `C5_MOTION_FAULT`, immediately attempts a stop and,
-if that also fails, retries every 100 ms. New motion is rejected until
-`C5_Motion_ClearFault()` successfully sends another stop.
+非零动作必须带 1–1000 ms 保持时间并持续刷新。超时广播停车；发送失败进入 `C5_MOTION_FAULT`，立即尝试停车，失败后每 100 ms 重试。只有 `C5_Motion_ClearFault()` 成功停车后才允许新动作。
 
-`C5_Motion_CommandWheels()` supports independent LF/RF/LR/RR logical speeds.
-`C5_Motion_CommandTwist()` and the named forward, backward, strafe and rotate
-calls use the mixer. The main loop initializes and services this layer; the
-optional PS2 controller reaches it only through `C5_Motion_CommandTwist()` and
-`C5_Motion_Stop()`. No autonomous movement is scheduled.
+PS2 层只调用 `C5_Motion_CommandTwist()` 和 `C5_Motion_Stop()`，不直接写总线帧。
 
-## Verification completed without hardware
+## 软件验证
 
-- Production protocol, mixer and state-machine sources compile and run as
-  host tests with MSVC `/W4 /WX`.
-- Tests cover exact frame strings, vendor wheel signs, primitives,
-  normalization, deadline stop, failed-stop retry, 32-bit tick wraparound and
-  the PS2 remote policy layered above the motion API.
-- The complete STM32 target rebuilds with AC5.06u7 at 0 errors and 0 warnings.
-- CubeMX quiet generation completes on the pinned 6.12.1 project database;
-  the script persists the user's no-migration choice before and after the run.
-- Keil project synchronization is deterministic and idempotent after generation.
+- MSVC `/W4 /WX` 主机测试通过。
+- 覆盖协议文本、轮符号、麦轮混控、归一化、超时、停车重试、tick 回绕和 PS2 策略。
+- AC5.06u7 完整构建 0 error、0 warning。
+- CubeMX 以 6.12.1 工程数据库静默重建成功。
+- Keil App 源文件同步可重复。
 
-## Required raised-chassis acceptance
+## 架空验收
 
-Before any vehicle-level command is enabled:
+1. 逐轮确认 ID 006–009；
+2. 确认每轮正速度对应物理前进；
+3. 检查停车脉冲、DAT 电平和 UART 帧；
+4. 测最低可靠速度并校准输出上限；
+5. 中断命令刷新和 MCU 通信，观察停车；
+6. 低速验证前后、旋转、横移；
+7. 最后标定 `vx/vy/wz` 物理量。
 
-1. confirm IDs 006-009 one wheel at a time;
-2. confirm each positive logical speed turns its wheel in the physical forward direction;
-3. verify stop pulse, DAT electrical levels and UART frame integrity;
-4. measure the lowest reliable speed and choose a calibrated output limit;
-5. interrupt command refresh and MCU communication to observe actual stop behavior;
-6. verify forward/reverse, rotation and lateral direction at low bounded speed;
-7. only then calibrate physical `vx`, `vy` and `wz` units.
-
-The motor controller may continue its last `T0000` command if the MCU hangs or
-loses power. The software deadline protects against a healthy main loop that
-stops receiving commands; it is not evidence of a hardware watchdog.
+电机控制器可能在 MCU 卡死/掉电后维持最后一条 `T0000`。软件超时只保护主循环仍运行但上游断联的情况，不等同于硬件看门狗。

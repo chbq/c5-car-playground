@@ -1,44 +1,39 @@
-# C5 Hardware Wiki
+# C5 项目 Wiki
 
-This directory is the compact, evidence-backed wiki for the C5 firmware project.
-It covers the hardware baseline, generated firmware and current control design.
+本目录集中记录硬件证据、固件设计、验收状态和未决问题。
 
-## Pages
+## 文档
 
-| Page | Purpose |
+| 页面 | 内容 |
 |---|---|
-| [hardware.md](hardware.md) | Requirements, system boundary, power and signal architecture |
-| [pinmap.md](pinmap.md) | H1 connector, MCU pin ownership and peripheral budget |
-| [unresolved.md](unresolved.md) | Conflicts, missing evidence and required physical checks |
-| [bringup-plan.md](bringup-plan.md) | Evidence, tooling and no-motor bring-up gates |
-| [vendor-inventory.md](vendor-inventory.md) | C5 vendor evidence inventory and primary sources |
-| [acceptance.md](acceptance.md) | Acceptance gates for environment, build, flash and motors |
-| [official-tooling-notes.md](official-tooling-notes.md) | Local toolchain assumptions and pending verification |
-| [motion-control.md](motion-control.md) | Vendor motion evidence, HAL/App design, safety behavior and pending calibration |
-| [ps2-control.md](ps2-control.md) | PS2 protocol, SWD sharing, KEY1 mode switch and remote-control safety design |
+| [hardware.md](hardware.md) | 系统边界、电源与信号结构 |
+| [pinmap.md](pinmap.md) | H1、MCU 引脚归属和外设预算 |
+| [unresolved.md](unresolved.md) | 冲突、缺失证据和实物检查项 |
+| [bringup-plan.md](bringup-plan.md) | 分阶段调通计划 |
+| [vendor-inventory.md](vendor-inventory.md) | 商家资料清单与主要证据 |
+| [acceptance.md](acceptance.md) | 环境、构建、烧录、电机和 PS2 验收门槛 |
+| [official-tooling-notes.md](official-tooling-notes.md) | 本机工具链基线 |
+| [motion-control.md](motion-control.md) | 电机协议、麦轮运动和安全策略 |
+| [ps2-control.md](ps2-control.md) | PS2、SWD 复用和遥控策略 |
 
-## Current baseline
+## 当前基线
 
-- System application MCU: STM32F103C8T6.
-- Four wheel motors are independent bus-motor modules, not four direct MCU PWM outputs.
-- Motor bus: USART3 on PB10/PB11 through the baseboard single-wire `DAT` circuit.
-- Wired PC and serial-boot path: CH340 through USART1 on PA9/PA10 at 115200 baud.
-- Optional independent host link: reserve USART2 on PA2/PA3, accessible from H1.
-- Debug/control: boot with SWD on PA13/PA14; a deliberate KEY1 long press may
-  release SWD and assign PA12-PA15 to PS2 until another long press or reset.
-- Project clock input: use the vendor-source 8 MHz HSE assumption and configure 72 MHz with PLL x9; revisit only if hardware behavior disagrees.
-- The CubeMX/Keil baseline and first unverified motion implementation build
-  successfully. The PS2/SWD dual-mode implementation also passes host tests,
-  CubeMX regeneration and AC5 compilation. No firmware has been flashed and no
-  motor has been driven.
+- MCU：STM32F103C8T6。
+- 四轮为独立总线电机，不是 MCU 四路直驱 PWM。
+- 电机总线：USART3 PB10/PB11，经底板单线 `DAT` 电路。
+- 诊断/串口下载：CH340 → USART1 PA9/PA10，115200。
+- 独立上位机预留：USART2 PA2/PA3，可从 H1 引出。
+- 调试/遥控：上电使用 PA13/PA14 SWD；KEY1 长按后 PA12–PA15 切换为 PS2。
+- 时钟：8 MHz HSE，PLL ×9 至 72 MHz。
+- CubeMX/Keil、麦轮运动和 PS2 双模式软件均已验证；尚未烧录和驱动电机。
 
-## Evidence labels
+## 证据等级
 
-| Label | Meaning |
+| 等级 | 含义 |
 |---|---|
-| Confirmed | Explicit vendor schematic/manual evidence, or mutually consistent vendor sources |
-| User-observed | Physical observation explicitly supplied by the user |
-| Source-derived | Vendor code behavior; useful but not sufficient to override conflicting hardware evidence |
-| Unresolved | Missing, conflicting or not yet physically verified |
+| 已确认 | 原理图/手册明确，或多份商家资料一致 |
+| 用户观察 | 用户明确提供的实物观察 |
+| 源码推断 | 来自商家代码，不能覆盖冲突的硬件证据 |
+| 未决 | 证据缺失、冲突或尚未实测 |
 
-Unknown hardware facts remain in [unresolved.md](unresolved.md); they are never filled from generic STM32 assumptions.
+未决事实统一记录在 [unresolved.md](unresolved.md)。

@@ -1,75 +1,67 @@
-# C5 Bring-up Plan
+# C5 调通计划
 
-## Phase 0A - Hardware wiki baseline
+## 阶段 0A：硬件 Wiki
 
-Status: documented, with unresolved items explicitly retained.
+状态：完成，未决项单列保留。
 
-- system requirements and boundaries;
-- power and signal architecture;
-- H1 and MCU pin map;
-- peripheral allocation for motor, host and debug links;
-- vendor evidence inventory;
-- hardware and tooling blockers.
+- 系统需求与边界
+- 电源、信号结构
+- H1 与 MCU 引脚图
+- 电机、上位机、调试资源分配
+- 商家证据清单
+- 硬件与工具链待确认项
 
-No generation, build, flash or motor output is allowed in this phase.
+本阶段不生成、不编译、不烧录、不驱动电机。
 
-## Phase 0B - Optional physical checks
+## 阶段 0B：可选实物检查
 
-These checks are useful when wiring the board, but they do not block creation of the first `.ioc`:
+不阻塞首版 `.ioc`：
 
-- use 8 MHz HSE and PLL x9 from the vendor source unless hardware behavior disagrees;
-- verify physical core/base revision silk when convenient;
-- identify H1 pin 1 and continuity-check planned USART2/SWD pins;
-- locate an NRST access point if available;
-- document 3.3 V, 5 V and VS rails without driving motors;
-- keep motor modules disconnected when a check does not require them.
+- 默认采用 8 MHz HSE、PLL ×9，运行异常时再复核
+- 方便时确认核心板/底板丝印版本
+- 确认 H1 方向及 USART2、SWD 连通性
+- 查找可用 NRST 测点
+- 无电机动作地记录 3.3 V、5 V、VS 电源
 
-## Phase 0C - Reproducible toolchain
+## 阶段 0C：可复现工具链
 
-Status: complete on the current machine.
+状态：本机完成。
 
-- initialize Git before generated files exist;
-- create ignored `tools/local.env.ps1` from the template;
-- make `doctor.ps1` detect the actual D-drive installations;
-- select and record CubeMX, CubeF1, Keil DFP and ARM compiler versions;
-- run doctor and save its exit code/reports;
-- decide the exact SWD and serial-boot cable mappings.
+- 初始化 Git
+- 创建忽略的 `tools/local.env.ps1`
+- 让 `doctor.ps1` 识别 D 盘工具
+- 固定 CubeMX、CubeF1、Keil DFP、ARM 编译器版本
+- 保存 doctor 结果
+- 明确 SWD 与串口 Bootloader 接线
 
-## Phase 1 - Minimal no-motor project
+## 阶段 1：无电机最小工程
 
-Status: complete and built with AC5.06u7.
+状态：完成，AC5.06u7 构建通过。
 
-After the toolchain inputs are pinned:
+- 8 MHz HSE / 72 MHz SYSCLK
+- 上电保留 SWD
+- USART1：CH340 诊断/串口下载
+- USART2：独立上位机预留
+- USART3：电机总线
+- 明确安全启动和故障处理
+- CubeMX 可重复生成、Keil 可命令行构建
+- 不自动烧录
 
-- confirmed system clock;
-- SWD retained;
-- USART1 CH340 diagnostic/boot path;
-- USART3 initialized without sending motion commands;
-- USART2 pins reserved, not necessarily enabled;
-- explicit safe startup state and fault reporting;
-- CubeMX regeneration and Keil command-line build;
-- zero build errors, warnings recorded;
-- no automatic flash.
+## 阶段 2：烧录与启动
 
-## Phase 2 - Flash and boot
+- 通过选定链路连接
+- 仅在构建成功且用户明确确认后烧录
+- 校验镜像、复位和启动诊断
+- 确认上电/复位不引发电机动作
 
-- connect through the chosen debug/programming path;
-- flash only after a successful build and explicit user confirmation;
-- verify image, reset and diagnostic boot message;
-- confirm reset/startup never produces motor motion.
+## 阶段 3：总线与单轮验收
 
-## Phase 3 - Bus and single-wheel acceptance
+架空底盘，先确认 ID，再逐轮低速、限时测试；车辆级动作前必须验证通信丢失停车。
 
-The chassis must be raised. Read or verify device IDs first, then test one physical wheel at a time with low speed, bounded duration and automatic stop. Communication-loss behavior must be tested before any vehicle-level motion.
+## 阶段 4：麦轮动作
 
-## Phase 4 - Mecanum vehicle commands
+`vx/vy/wz` 混控与安全状态机已完成软件验证。四轮位置、方向和超时实测通过后，才启用车辆级动作。
 
-The unitless `vx`, `vy` and `wz` mixer and bounded safety state machine are
-implemented ahead of hardware access so they can be reviewed and host-tested.
-They remain disabled from autonomous use. Enable vehicle-level commands only
-after all four physical wheel mappings, motor directions and timeout behavior
-pass Phase 3.
+## 阶段 5：扩展
 
-## Phase 5 - Optional expansion
-
-Add the independent USART2 host link, sensors or other peripherals as separately scoped tasks. Use C25 behavior or algorithms only after the C5 baseline is stable.
+按独立任务接入 USART2 上位机、传感器等功能。C5 基线稳定前不迁移 C25。

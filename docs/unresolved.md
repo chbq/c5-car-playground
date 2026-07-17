@@ -1,19 +1,19 @@
-# C5 Unresolved Questions
+# C5 未决问题
 
-| Priority | Question | Current evidence | Affected work | Safe action | Required check |
-|---|---|---|---|---|---|
-| Deferred | What are the exact physical core/base board revisions? | PDF title blocks are core V3 and base V3.4; current photo does not make both silk revisions readable | Applicability of all schematic facts | Use the vendor document revisions unless hardware behavior disagrees | Photograph both PCB revision silks if needed |
-| Deferred | Can SWD be used reliably from H1, and where is NRST accessible? | H1 exposes PA13/PA14, 3.3 V and GND; user observes accessible female headers; NRST is absent from H1 | Debug cable and connect-under-reset | Boot with SWD; use PS2 only after explicit mode switch | Verify while making the actual cable |
-| High before PS2 motion | What is KEY1's electrical polarity and does PA8 on this PCB revision actually reach the switch? | Schematic/comment label KEY1 as PA8, but vendor GPIO initialization also uses PA8 as an output | Reliable mode switching | Compile-time default is pull-up/active-low; reset remains recovery path | Read PA8 idle/pressed levels before the first PS2 test |
-| High before PS2 motion | Does the installed PS2 receiver accept the selected bit timing and report analog mode? | Vendor source uses PA12-PA15, about 20 us per bit and mode `0x73`; receiver model is unknown | Controller communication | Require valid header and neutral frames before arming | Capture raw frames with wheels raised and motor power isolated |
-| High before motor power | What are DAT idle level, voltage and transceiver device details? | Base schematic shows a single-wire conversion circuit but gate part numbers/electrical behavior are incomplete | USART electrical safety and collision handling | Do not connect an external push-pull driver to DAT | Measure idle voltage and capture a known transaction |
-| High before motion | Are physical motor IDs and wheel locations actually 006/007/008/009? | Vendor configuration manual defines these IDs and positions | Correct wheel mapping | No motion commands | Read IDs or perform raised-chassis single-wheel acceptance tests later |
-| High before motion | Do the vendor source's `+ - + -` wheel signs match the installed wheel orientation? | C5 source maps left wheels as `1500+speed` and right wheels as `1500-speed` | All vehicle directions | Keep signs isolated in `c5_motion_config.h`; no motion commands | Raised-chassis positive-speed test for each wheel |
-| High before motion | What happens on communication loss or MCU reset? | Vendor manual defines timed commands and stop value, but no verified failsafe behavior | Automatic stop requirement | Never use unbounded motion in first tests | Bench-test one raised wheel with bounded command and communication interruption |
-| Medium | What unit does `Ttime` actually use? | Manual text says seconds while examples such as `T1000` imply a conflicting interpretation | Motion timeout calculation | Treat duration semantics as unresolved | Time a low-speed raised-wheel command |
-| Medium | Can the vendor Bluetooth connector coexist cleanly with motor traffic? | It shares the USART3-related baseboard nets rather than a separate MCU UART | Host protocol parsing and collision risk | Reserve USART2 as the independent host link | Capture traffic with Bluetooth and a bus motor connected |
-| Medium | Are 5 V powered sensor outputs MCU-safe? | Sensor supply is selectable 3.3/5 V; signal lines are direct to ADC-capable MCU pins | External sensor safety | Use 3.3 V sensors or explicit level shifting | Check each module output specification or measure it |
+| 优先级 | 问题 | 现有证据 | 临时处理 | 实测要求 |
+|---|---|---|---|---|
+| 推迟 | 实物核心板/底板版本？ | PDF 为核心板 V3、底板 V3.4；照片看不清全部丝印 | 暂按文档版本 | 必要时拍摄丝印 |
+| 推迟 | H1 的 SWD 是否稳定，NRST 在哪里？ | H1 有 PA13/PA14、3.3 V、GND，无 NRST | 上电保留 SWD；显式切换后才用 PS2 | 制作线缆时测通断 |
+| PS2 前高优先 | KEY1 极性及 PA8 连通性？ | 原理图/注释为 PA8，但商家 GPIO 初始化又把 PA8 配为输出 | 默认上拉、低电平按下；复位可恢复 | 首次 PS2 测试前测空闲/按下电平 |
+| PS2 前高优先 | 接收器是否兼容当前时序和模拟模式？ | 商家用 PA12–PA15、约 20 µs/bit、模式 `0x73`；接收器型号未知 | 有效中位帧连续出现后才解锁 | 电机断电时抓取原始帧 |
+| 电机上电前高优先 | DAT 空闲电平、电压和转换器细节？ | 原理图有单线转换，但器件/电气信息不全 | 不外接推挽驱动 DAT | 测电平并抓取已知交易 |
+| 动作前高优先 | 实物轮位是否确为 006/007/008/009？ | 商家配置手册如此定义 | 不主动运动 | 架空逐轮验证 |
+| 动作前高优先 | `+ - + -` 极性是否匹配装车方向？ | 商家左轮 `1500+speed`、右轮 `1500-speed` | 极性集中在 `c5_motion_config.h` | 架空逐轮正速测试 |
+| 动作前高优先 | 通信丢失或 MCU 复位时电机如何响应？ | 手册有定时指令和停止值，无实测失效保护 | 首测只用限时命令 | 架空单轮断联测试 |
+| 中 | `Ttime` 单位？ | 手册称“秒”，示例 `T1000` 与之冲突 | 不依赖非零 `T` 做安全超时 | 计时低速指令 |
+| 中 | 商家蓝牙口能否与电机流量共存？ | 与 USART3 相关底板网络共线，并非独立 UART | 独立上位机使用 USART2 | 蓝牙与电机同时连接时抓包 |
+| 中 | 5 V 传感器输出是否对 MCU 安全？ | 供电可选 3.3/5 V，信号直连 MCU | 优先 3.3 V 或电平转换 | 查规格或测量 |
 
-## Known vendor-project conflict
+## 商家工程冲突
 
-The vendor Keil target names `STM32F103C8` and its metadata mentions medium-density startup, but its active preprocessor define and included startup file use `STM32F10X_HD` / `startup_stm32f10x_hd.s`. A clean project must select the correct medium-density C8 startup and must not copy this configuration.
+Keil 目标名为 `STM32F103C8`，但活动宏和启动文件是 `STM32F10X_HD` / `startup_stm32f10x_hd.s`。新工程必须使用 C8 对应的中密度配置，不能照抄。
