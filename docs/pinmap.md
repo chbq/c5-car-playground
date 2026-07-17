@@ -7,6 +7,7 @@
 | 固定 | USB 上位机、日志、串口下载 | USART1 PA9/PA10 | CH340、USB | 保留 |
 | 固定 | 四轮电机总线 | USART3 PB10/PB11 | H1 → DAT 电路 | 保留 |
 | 条件复用 | 调试/烧录 | PA13 SWDIO、PA14 SWCLK | H1 11/12 | 上电保留；KEY1 长按后才交给 PS2 |
+| 次要/条件复用 | PS2 遥控 | PA12 CLK、PA13 ATT、PA14 CMD、PA15 DAT；PA8 KEY1 | H1 10–13、H1 1 | 与 SWD 互斥；显式长按进入，复位或再次长按退出 |
 | 预留 | 独立上位机 | USART2 PA2/PA3 | H1 26/24 | 蓝牙、TTL UART 或 RS485 |
 | RS485 可选 | 收发方向 | 候选 PA11 | H1 14 / KEY2 | 选定收发器前保留 |
 | 板载占用 | 外部 Flash | SPI2 PB12–PB15 | W25Q64；PB13 兼作 LED | 暂保留 |
