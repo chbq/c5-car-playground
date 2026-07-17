@@ -26,6 +26,9 @@ $uv4 = Resolve-ToolPath `
 $uv4 = Require-File $uv4 "Keil UV4.exe"
 $ProjectPath = Require-File $ProjectPath "Keil .uvprojx project"
 
+& (Join-Path $PSScriptRoot "sync-keil-project.ps1") `
+    -ProjectPath $ProjectPath
+
 if ([string]::IsNullOrWhiteSpace($TargetName)) {
     throw "C5_KEIL_TARGET is not configured in tools/local.env.ps1."
 }

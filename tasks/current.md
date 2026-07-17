@@ -1,34 +1,49 @@
-# Current Task - Phase 1 CubeMX + Keil Baseline
+# Current Task - Phase 2 Motion Software Baseline
 
-Status: Complete
+Status: Complete; software verified without hardware
 
 ## Goal
 
-Create a clean, regenerable STM32CubeMX project for the C5 and prove that its
-generated MDK-ARM target builds with the pinned AC5 toolchain. Do not add
-application behavior, flash hardware or send motor commands.
+Use the C5 vendor case as behavioral evidence, then implement a clean HAL-based
+four-wheel mecanum motion layer with bounded commands and fail-safe stop logic.
+Do not flash hardware or drive motors.
 
 ## Completed work
 
-1. [x] Created `target/c5-firmware/c5-firmware.ioc` for STM32F103C8T6.
-2. [x] Configured 8 MHz HSE, PLL x9, 72 MHz SYSCLK and 36 MHz APB1.
-3. [x] Preserved SWD on PA13/PA14.
-4. [x] Configured USART1 PA9/PA10, USART2 PA2/PA3 and USART3 PB10/PB11 at 115200.
-5. [x] Configured active-low PB13 status LED with an initial high/off level.
-6. [x] Generated the CubeF1 1.8.7 HAL and MDK-ARM V5 project.
-7. [x] Rebuilt with ARM Compiler 5.06u7: 0 errors, 0 warnings.
-8. [x] Recorded the HEX path and kept Keil intermediates out of Git.
-9. [x] Hardened `generate.ps1` and `build.ps1` against false success and GUI-process timing.
+1. [x] Audited the C5 factory source for motor protocol, IDs, wheel order, polarity, primitives, UART setup and startup stop.
+2. [x] Added isolated `App/` protocol, mecanum, motion-state and HAL UART3 layers.
+3. [x] Added independent LF/RF/LR/RR speeds and unitless `vx/vy/wz` APIs.
+4. [x] Added forward, backward, strafe, rotate and explicit stop calls.
+5. [x] Added mandatory 1-1000 ms command expiry, active stop, fault latch and stop retry.
+6. [x] Centralized unverified IDs, wheel signs, output limit and timing parameters.
+7. [x] Added deterministic CubeMX-to-Keil App source synchronization.
+8. [x] Compiled and ran host tests with MSVC `/W4 /WX`.
+9. [x] Rebuilt the STM32 target with AC5.06u7: 0 errors, 0 warnings.
+10. [x] Documented evidence, architecture, API and raised-chassis acceptance requirements.
+11. [x] Repeated CubeMX quiet generation with the 6.12.1 database and preserved all USER CODE/App integration.
+12. [x] Ran the full no-flash verification pipeline: doctor, host tests, generation and AC5 build all passed.
 
-## Result
+## Current firmware behavior
 
-- Keil project: `target/c5-firmware/MDK-ARM/c5-firmware.uvprojx`
-- Firmware image: `target/c5-firmware/MDK-ARM/c5-firmware/c5-firmware.hex`
-- Program size: Code 2024, RO-data 276, RW-data 16, ZI-data 1848 bytes
-- No application code, UART transmission, flashing or hardware test was performed.
+- USART3 is initialized by generated HAL code.
+- Startup immediately sends `#255P1500T0000!`.
+- The main loop services motion expiry and fault-stop retries.
+- No movement command is issued automatically.
+- No upstream serial command parser is enabled.
+
+## CubeMX automation resolution
+
+The first quiet runs stalled because `.ioc` retained
+`ProjectManager.AskForMigrate=true`; the GUI normally answers this with the
+"continue as 6.12" dialog, but quiet mode cannot. `generate.ps1` now persists
+the already chosen 6.12.1 no-migration setting before and after generation,
+requires CubeMX `OK`/`Bye bye` markers, checks that the MDK project was
+refreshed, and then synchronizes the App group. Repeated unattended generation
+now exits normally.
 
 ## Next vertical task
 
-Define the minimal no-motor firmware behavior: boot diagnostics, fault reporting
-and an explicit motor-bus stop policy. Hardware flashing and motor testing remain
-separately authorized steps.
+Perform flash/boot and raised-chassis single-wheel acceptance as a separately
+authorized task. Only after wheel IDs,
+physical signs and communication-loss behavior pass should a host command
+protocol be connected to the movement API.

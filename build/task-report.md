@@ -104,6 +104,41 @@ Automation issues found and corrected during the first run:
 - PowerShell did not wait for the GUI-subsystem `UV4.exe`; `build.ps1` now waits
   for completion and validates the final Keil error/warning summary and HEX file.
 
+## Phase 2 motion software baseline
+
+- Audited the C5 factory source for USART3 setup, broadcast stop, group framing,
+  motor IDs, left/right pulse signs and six basic vehicle movements.
+- Implemented production protocol encoding, mecanum mixing, independent wheel
+  commands, named movements, deadline stop, UART-fault latch and stop retry.
+- Added a blocking HAL UART3 adapter; no RTOS, interrupt TX or DMA was added.
+- Startup now sends only `#255P1500T0000!`; no motion is scheduled.
+- Added deterministic, idempotent synchronization of `App/Src/*.c` into the
+  CubeMX-generated Keil project.
+
+| Command | Result |
+|---|---|
+| `tools/test-host.ps1` | Exit 0; MSVC `/W4 /WX`; `c5_motion_tests: PASS` |
+| `tools/build.ps1 -Rebuild` | Exit 0; AC5.06u7; 0 errors, 0 warnings |
+| `tools/verify.ps1 -SkipGenerate` | Exit 0; doctor, host tests and Keil build all passed; no flash |
+| `tools/sync-keil-project.ps1` repeated twice | Exit 0; identical SHA-256 after second run |
+| `tools/generate.ps1` attempt 1 | External runner timed out at 120 s; CubeMX 6.18.0-RC3 remained at DB.6.0.121 load |
+| `tools/generate.ps1` attempt 2 | Reproduced the same stall beyond normal startup time; process terminated and log retained |
+| `tools/generate.ps1` after migration-prompt fix | Exit 0 twice; `OK` / `Bye bye`; USER CODE and App project group preserved |
+| `tools/verify.ps1` full pipeline | Exit 0; doctor, host tests, CubeMX generation and AC5 build passed; no flash |
+
+Program size after motion integration: Code 2996, RO-data 284, RW-data 28,
+ZI-data 1876 bytes.
+
+Firmware image: `target/c5-firmware/MDK-ARM/c5-firmware/c5-firmware.hex`.
+
+Root cause of the quiet-mode stall was the interactive
+`ProjectManager.AskForMigrate=true` flag. The user had already selected
+"continue as 6.12" in the GUI; `generate.ps1` now persists that choice for
+unattended runs and validates both CubeMX completion markers and MDK project
+refresh time. The regeneration gate is complete.
+
+No firmware was flashed, no serial port was opened and no motor was driven.
+
 ## Repository synchronization scope
 
 The initial Git baseline contains project-owned firmware sources, CubeMX/MDK

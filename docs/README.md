@@ -14,6 +14,7 @@ It describes the system before any CubeMX or Keil project is created.
 | [vendor-inventory.md](vendor-inventory.md) | C5 vendor evidence inventory and primary sources |
 | [acceptance.md](acceptance.md) | Acceptance gates for environment, build, flash and motors |
 | [official-tooling-notes.md](official-tooling-notes.md) | Local toolchain assumptions and pending verification |
+| [motion-control.md](motion-control.md) | Vendor motion evidence, HAL/App design, safety behavior and pending calibration |
 
 ## Current baseline
 
@@ -24,7 +25,7 @@ It describes the system before any CubeMX or Keil project is created.
 - Optional independent host link: reserve USART2 on PA2/PA3, accessible from H1.
 - Debug: reserve SWD on PA13/PA14; PS2 use is deferred.
 - Project clock input: use the vendor-source 8 MHz HSE assumption and configure 72 MHz with PLL x9; revisit only if hardware behavior disagrees.
-- No project generation, compilation, flashing or motor drive has been performed.
+- The CubeMX/Keil baseline and first unverified motion implementation build successfully; no firmware has been flashed and no motor has been driven.
 
 ## Evidence labels
 

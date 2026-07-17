@@ -21,7 +21,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "c5_motion.h"
+#include "c5_motion_config.h"
+#include "c5_motor_bus_hal.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +47,9 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-
+static C5_MotorBusHal motor_bus;
+static C5_Motion motion;
+static uint8_t motion_initialized;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -93,7 +97,16 @@ int main(void)
   MX_USART2_UART_Init();
   MX_USART3_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  C5_MotorBusHal_Init(&motor_bus, &huart3, C5_MOTOR_UART_TIMEOUT_MS);
+  motion_initialized = 1U;
+  if (C5_Motion_Init(&motion,
+                     C5_MotorBusHal_Write,
+                     &motor_bus,
+                     &C5_MOTOR_LAYOUT_VENDOR_DEFAULT,
+                     HAL_GetTick()) != 0)
+  {
+    Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -103,6 +116,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    C5_Motion_Service(&motion, HAL_GetTick());
   }
   /* USER CODE END 3 */
 }
@@ -286,7 +300,10 @@ static void MX_GPIO_Init(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
+  if (motion_initialized != 0U)
+  {
+    (void)C5_Motion_Stop(&motion, HAL_GetTick());
+  }
   __disable_irq();
   while (1)
   {

@@ -55,7 +55,8 @@ function Invoke-LoggedProcess {
         [Parameter(Mandatory=$true)][string]$Executable,
         [Parameter(Mandatory=$true)][string[]]$Arguments,
         [Parameter(Mandatory=$true)][string]$LogPath,
-        [string]$WorkingDirectory = $script:RepoRoot
+        [string]$WorkingDirectory = $script:RepoRoot,
+        [switch]$Quiet
     )
 
     $Executable = Require-File $Executable "Executable"
@@ -70,7 +71,17 @@ function Invoke-LoggedProcess {
         # Keep capturing stderr in the log without treating ordinary tool
         # diagnostics as terminating PowerShell exceptions.
         $ErrorActionPreference = "Continue"
-        & $Executable @Arguments 2>&1 | Tee-Object -FilePath $LogPath
+        if ($Quiet) {
+            # Keep a pipeline attached so GUI-subsystem launchers such as
+            # STM32CubeMX remain awaited, but do not stream their verbose log
+            # into the Codex/tool console.
+            & $Executable @Arguments 2>&1 |
+                Tee-Object -FilePath $LogPath |
+                Out-Null
+        }
+        else {
+            & $Executable @Arguments 2>&1 | Tee-Object -FilePath $LogPath
+        }
         $exitCode = $LASTEXITCODE
     }
     finally {

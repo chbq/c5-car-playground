@@ -11,9 +11,12 @@ The baseline is generated from `c5-firmware.ioc` for STM32F103C8T6 with:
 - USART3 motor bus on PB10/PB11;
 - active-low PB13 status LED, initially high/off.
 
-It contains CubeMX initialization only. It sends no UART or motor command.
+The `App/` layer now contains the first unverified motion implementation. At
+startup it sends the vendor broadcast stop frame on USART3 and then services
+the motion timeout/fault state machine. It does not schedule any movement or
+parse host commands.
 
-Suggested application layout after CubeMX generation:
+Application layout:
 
 ```text
 App/
@@ -28,5 +31,9 @@ Regenerate and rebuild from the repository root:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\generate.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\test-host.ps1
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\build.ps1 -Rebuild
 ```
+
+`generate.ps1` calls `sync-keil-project.ps1` so the generated MDK project always
+contains `App/Src/*.c` and `App/Inc`. None of these commands flash hardware.

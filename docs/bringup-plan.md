@@ -37,6 +37,8 @@ Status: complete on the current machine.
 
 ## Phase 1 - Minimal no-motor project
 
+Status: complete and built with AC5.06u7.
+
 After the toolchain inputs are pinned:
 
 - confirmed system clock;
@@ -62,7 +64,11 @@ The chassis must be raised. Read or verify device IDs first, then test one physi
 
 ## Phase 4 - Mecanum vehicle commands
 
-Introduce `vx`, `vy` and `wz` only after all four physical wheel mappings, motor directions and timeout behavior are verified.
+The unitless `vx`, `vy` and `wz` mixer and bounded safety state machine are
+implemented ahead of hardware access so they can be reviewed and host-tested.
+They remain disabled from autonomous use. Enable vehicle-level commands only
+after all four physical wheel mappings, motor directions and timeout behavior
+pass Phase 3.
 
 ## Phase 5 - Optional expansion
 

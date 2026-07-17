@@ -1,12 +1,15 @@
 # Host-side tests
 
-Add serial protocol tests here only after the diagnostic protocol is defined.
+`c5_motion_tests.c` compiles the production protocol, mecanum and motion-state
+sources with the local Visual Studio C compiler. It covers frame encoding,
+wheel-direction mapping, mecanum mixing and normalization, command expiry,
+fault-stop retry and tick wraparound.
 
-Recommended future files:
+Run from the repository root:
 
-- `requirements.txt`
-- `serial_smoke_test.py`
-- `scenarios/boot.json`
-- `scenarios/motor_single_wheel.json`
+```powershell
+.\tools\test-host.ps1
+```
 
-Hardware tests must never issue unbounded motor commands.
+The HAL UART adapter is excluded from host compilation and is verified by the
+Keil target build. Hardware tests must never issue unbounded motor commands.

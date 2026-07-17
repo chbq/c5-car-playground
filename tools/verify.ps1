@@ -12,6 +12,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "Environment audit failed."
 }
 
+& (Join-Path $PSScriptRoot "test-host.ps1")
+
 if (-not $SkipGenerate) {
     & (Join-Path $PSScriptRoot "generate.ps1")
 }
