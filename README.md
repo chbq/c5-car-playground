@@ -44,9 +44,10 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 - 阶段 0：资料与环境审计（完成）
 - 阶段 1：CubeMX + Keil 基线（完成）
-- 阶段 2：麦轮运动与失效停车（软件完成，待实物验收）
-- 阶段 3：PS2/SWD 双模式遥控（软件完成，待实物验收）
-- 后续：上位机协议、实物验收和闭环功能
+- 阶段 2：麦轮运动与失效停车（架空及整车三轴运动通过，断联停车待补）
+- 阶段 3：PS2/SWD 双模式遥控（PS2、KEY1 和车辆方向实测通过，SWD 恢复待补）
+- 下一阶段：USART2 上位机运动指令与独立通信看门狗
+- 后续：地面标定、无线失联策略和闭环功能
 
 详细入口见 [`docs/README.md`](docs/README.md)，当前任务见
 [`tasks/current.md`](tasks/current.md)。

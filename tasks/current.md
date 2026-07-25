@@ -1,6 +1,6 @@
 # Current Task - Phase 3 PS2 Remote Control
 
-Status: Complete; software verified without hardware
+Status: Complete; software verified and partially hardware accepted
 
 ## Goal
 
@@ -43,10 +43,19 @@ not flash hardware or drive motors.
 - `tools/build.ps1 -Rebuild`: exit 0; AC5.06u7, 0 errors, 0 warnings.
 - `tools/verify.ps1`: exit 0 across doctor, tests, generation and build.
 - Program size: Code 5448, RO-data 296, RW-data 36, ZI-data 1940 bytes.
-- No flash, serial-port access or motor command was performed.
+- The automated verification did not flash hardware, open a serial port or drive motors.
+
+## Hardware acceptance result
+
+- The current image was flashed through the core-board SWD header and booted normally.
+- Active-low KEY1 entry/exit and PB13 off/blinking/solid indication matched the design.
+- The supplied 6-pin receiver link works after the controller is switched to analog mode.
+- Raised-chassis and whole-vehicle tests produced correct forward/reverse, strafe and yaw directions.
+- Cells at about 2.3-2.5 V each powered indicators but not motors; charging restored motion.
+- Turning off the wireless controller does not invalidate receiver frames, so radio-loss safety remains unresolved.
 
 ## Next vertical task
 
-Perform explicit hardware acceptance: measure KEY1 polarity, validate the PS2
-receiver and mode indication without motor power, verify SWD recovery, then run
-raised-chassis low-speed dead-man and communication-loss stop tests.
+Add a bounded USART2 host-motion protocol with explicit ownership, command
+ranges and an independent stop deadline. Preserve PS2 safety behavior and keep
+the wireless-controller loss issue visible until raw receiver frames are captured.

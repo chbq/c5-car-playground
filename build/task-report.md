@@ -174,6 +174,20 @@ sent. KEY1 polarity, controller timing/compatibility, LED behavior, SWD
 reconnection and every physical motion behavior remain unverified hardware
 acceptance items.
 
+## Phase 3 hardware acceptance
+
+Date: 2026-07-25
+
+- The user flashed the current image through the core-board SWD header, first tested with the chassis raised, then reported normal whole-vehicle motion.
+- The supplied 6-pin PS2 link, active-low KEY1 switching and PB13 mode indication matched the implementation.
+- The controller must be switched to analog mode with MODE; the board then changes from blinking to solid after valid neutral frames.
+- L1/R1 dead-man control and the configured forward/reverse, strafe and yaw directions drove all four wheels correctly.
+- Initial weak/missing wheel motion was traced to two 14500 cells measuring about 2.3-2.5 V each; charging restored motion.
+- Turning off the wireless controller leaves the receiver returning acceptable analog frames, so the existing 150 ms timeout does not prove radio-link liveness.
+- SWD reconnection after PS2 exit, receiver physical-disconnect stop, raw frames on radio loss, individual motor IDs and ground-motion calibration remain open.
+
+This documentation-only update ran no build, generation, flash or motor command.
+
 ## Repository synchronization scope
 
 The initial Git baseline contains project-owned firmware sources, CubeMX/MDK
