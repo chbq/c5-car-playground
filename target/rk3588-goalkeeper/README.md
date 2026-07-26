@@ -17,17 +17,16 @@
 
 ## 接线
 
-HOST 目标仍为 `UART7_M2`、`/dev/ttyS7`、115200、8N1。实物 5 Pro 当前镜像
-提供 `rk3588-uart7-m2.dtbo`，但尚未启用，`/dev/ttyS7` 尚不存在。
+HOST 使用 115200、8N1 的 USB 串口链路：
 
-| Orange Pi 40-pin | C5 H1 | 信号 |
-|---|---|---|
-| 待按 5 Pro 手册确认，UART7_TX_M2 | 24，PA3/USART2_RX | Orange Pi → STM32 |
-| 待按 5 Pro 手册确认，UART7_RX_M2 | 26，PA2/USART2_TX | STM32 → Orange Pi |
-| 待按 5 Pro 手册确认，GND | H1-15 或 H1-16 | 共地 |
+```text
+Orange Pi USB-A → USB 数据线 → 核心板 CH340 → STM32 USART1 PA9/PA10
+```
 
-确认 5 Pro 针脚前不得接线。两板 VCC 不相连；`/dev/ttyS0` 是调试控制台，
-不用于运动链路。
+不接 40-pin 或 H1。端口默认设为 `auto`：优先 `C5_HOST_PORT`、`/dev/c5-host`
+和唯一 CH340 `/dev/serial/by-id/...`，最后才接受唯一 `/dev/ttyUSB*`。多个串口时
+用环境变量或 `--port` 指定。打开前会撤销 DTR/RTS，仍须实测核心板自动下载电路是否
+出现复位瞬态。USART2 PA2/PA3 保留扩展，不再依赖 UART7 overlay。
 
 ## 本机测试
 
@@ -57,13 +56,21 @@ python3 motion_cli.py                 # 默认仅 QUERY
 python3 motion_cli.py stop
 ```
 
+连接后可先确认设备，不打开运动链路：
+
+```bash
+lsusb
+ls -l /dev/serial/by-id/ /dev/ttyUSB* 2>/dev/null
+```
+
 动作命令只能在轮组架空并再次获得明确授权后使用；CLI 将单轴限制在 ±200、时长限制在 2 秒，并始终尝试 STOP：
 
 ```bash
 python3 motion_cli.py move --vx 100 --duration 0.5 --execute
 ```
 
-`main.py` 与 CLI 使用 `/tmp` 独占锁，不能同时打开运动串口。固定帧定义见[通信协议](通信协议.md)，服务部署见[开机自启动](开机自启动使用说明.md)。
+`main.py` 与 CLI 使用按解析后设备路径生成的 `/tmp` 独占锁，不能同时打开运动串口。
+固定帧定义见[通信协议](通信协议.md)，服务部署见[开机自启动](开机自启动使用说明.md)。
 
 ## 后续边界
 

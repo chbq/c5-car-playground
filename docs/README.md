@@ -15,15 +15,15 @@
 | [official-tooling-notes.md](official-tooling-notes.md) | 本机工具链基线 |
 | [motion-control.md](motion-control.md) | 电机协议、麦轮运动和安全策略 |
 | [ps2-control.md](ps2-control.md) | PS2、SWD 复用和遥控策略 |
-| [host-link.md](host-link.md) | 香橙派 USART2 协议、控制权和验收顺序 |
+| [host-link.md](host-link.md) | 香橙派 USB/CH340 协议、控制权和验收顺序 |
 
 ## 当前基线
 
 - MCU：STM32F103C8T6。
 - 四轮为独立总线电机，不是 MCU 四路直驱 PWM。
 - 电机总线：USART3 PB10/PB11，经底板单线 `DAT` 电路。
-- 诊断/串口下载：CH340 → USART1 PA9/PA10，115200。
-- 独立上位机：USART2 PA2/PA3，经 H1 连接 Orange Pi UART7_M2。
+- 默认 HOST/串口下载：Orange Pi 或 PC USB → CH340 → USART1 PA9/PA10，115200。
+- 扩展串口：USART2 PA2/PA3 经 H1 引出，保留给后续 3.3 V UART/外置 RS485。
 - 调试/遥控：上电使用 PA13/PA14 SWD；KEY1 长按后 PA12–PA15 切换为 PS2。
 - 时钟：8 MHz HSE，PLL ×9 至 72 MHz。
 - 当前镜像已烧录；PS2 模拟模式、KEY1 切换、架空和整车麦轮三轴运动已实测。

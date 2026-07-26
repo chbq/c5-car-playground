@@ -18,8 +18,8 @@ FRAME_WIDTH = 1280
 FRAME_HEIGHT = 720
 FPS_TARGET = 120  # 120fps 摄像头，不限制帧率
 
-# ── C5 HOST 串口（5 Pro UART7_M2，40-pin 待手册复核）─────
-SERIAL_PORT = '/dev/ttyS7'
+# C5 HOST uses the core-board CH340 over Orange Pi USB.
+SERIAL_PORT = 'auto'
 SERIAL_BAUD = 115200
 
 # ── 模型参数 ─────────────────────────────────────────────
@@ -56,7 +56,7 @@ try:
     motion_link = MotionLink(port=SERIAL_PORT, baudrate=SERIAL_BAUD)
     motion_link.open()
     link_status = motion_link.query()
-    print(f"[C5] 已连接 {SERIAL_PORT}: mode={link_status.mode.name} "
+    print(f"[C5] 已连接 {motion_link.resolved_port}: mode={link_status.mode.name} "
           f"host={link_status.host_state.name} motion={link_status.motion_state.name}")
 except (MotionLinkError, OSError, ValueError) as e:
     print(f"[C5] 运动链路不可用: {e}（本阶段继续视觉运行，不会自动运动）")

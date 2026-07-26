@@ -15,6 +15,7 @@ from motion_protocol import (
     pack_command,
     unpack_status,
 )
+from serial_transport import AUTO_PORT, open_ch340_serial, resolve_serial_port
 
 try:
     import fcntl
@@ -29,7 +30,7 @@ class MotionLinkError(RuntimeError):
 class MotionLink:
     """Synchronous command API backed by a serial reader thread."""
 
-    def __init__(self, port="/dev/ttyS7", baudrate=115200,
+    def __init__(self, port=AUTO_PORT, baudrate=115200,
                  ack_timeout=0.2, status_timeout=0.2,
                  status_callback=None, serial_factory=None,
                  lock_path="auto"):
@@ -41,6 +42,7 @@ class MotionLink:
         self._serial_factory = serial_factory
         self._lock_path = lock_path
         self._serial = None
+        self._resolved_port = None
         self._lock_file = None
         self._parser = FrameParser()
         self._condition = threading.Condition()
@@ -65,6 +67,10 @@ class MotionLink:
             return self._armed
 
     @property
+    def resolved_port(self):
+        return self._resolved_port
+
+    @property
     def last_status(self):
         with self._condition:
             return self._last_status
@@ -72,7 +78,8 @@ class MotionLink:
     def _resolved_lock_path(self):
         if self._lock_path != "auto":
             return self._lock_path
-        safe_port = re.sub(r"[^A-Za-z0-9_.-]", "_", self.port)
+        port = self._resolved_port or self.port
+        safe_port = re.sub(r"[^A-Za-z0-9_.-]", "_", port)
         return os.path.join("/tmp", f"c5-host-uart-{safe_port}.lock")
 
     def _acquire_port_lock(self):
@@ -98,6 +105,10 @@ class MotionLink:
     def open(self):
         if self.is_open:
             return self
+        try:
+            self._resolved_port = resolve_serial_port(self.port)
+        except RuntimeError as exc:
+            raise MotionLinkError(str(exc)) from exc
         self._acquire_port_lock()
         try:
             if self._serial_factory is None:
@@ -105,15 +116,16 @@ class MotionLink:
                     import serial
                 except ImportError as exc:
                     raise MotionLinkError("pyserial is not installed") from exc
-                factory = serial.Serial
+                self._serial = open_ch340_serial(
+                    self._resolved_port, self.baudrate, serial
+                )
             else:
-                factory = self._serial_factory
-            self._serial = factory(
-                self.port,
-                self.baudrate,
-                timeout=0.02,
-                write_timeout=0.1,
-            )
+                self._serial = self._serial_factory(
+                    self._resolved_port,
+                    self.baudrate,
+                    timeout=0.02,
+                    write_timeout=0.1,
+                )
             self._running = True
             self._reader_error = None
             self._thread = threading.Thread(target=self._reader_loop,
@@ -122,7 +134,13 @@ class MotionLink:
             self._thread.start()
             return self
         except Exception:
+            if self._serial is not None:
+                try:
+                    self._serial.close()
+                except Exception:
+                    pass
             self._serial = None
+            self._resolved_port = None
             self._release_port_lock()
             raise
 
@@ -141,6 +159,7 @@ class MotionLink:
             self._serial.close()
         finally:
             self._serial = None
+            self._resolved_port = None
             with self._condition:
                 self._armed = False
                 self._faulted = False

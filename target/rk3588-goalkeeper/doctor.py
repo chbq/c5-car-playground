@@ -6,9 +6,11 @@ import importlib.util
 import os
 from pathlib import Path
 import platform
+import subprocess
 import sys
 
-SERIAL_PORT = Path("/dev/ttyS7")
+from serial_transport import find_ch340_by_id_paths, resolve_serial_port
+
 MODULES = ("serial", "smbus2", "cv2", "numpy", "rknnlite")
 BOOT_CONFIGS = (Path("/boot/orangepiEnv.txt"), Path("/boot/armbianEnv.txt"))
 
@@ -35,6 +37,16 @@ def read_boot_setting(name):
     return "UNKNOWN"
 
 
+def service_is_active(name):
+    result = subprocess.run(
+        ("systemctl", "is-active", "--quiet", name),
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
 def main():
     print(f"system: {platform.platform()}")
     print(f"machine: {platform.machine()}")
@@ -45,20 +57,34 @@ def main():
     print(f"python: {sys.version.split()[0]} ({sys.executable})")
     groups = sorted({grp.getgrgid(group_id).gr_name for group_id in os.getgroups()})
     print(f"groups: {','.join(groups)}")
-    serial_nodes = sorted(Path("/dev").glob("ttyS*"))
-    print(f"serial nodes: {len(serial_nodes)}")
+    serial_nodes = sorted(Path("/dev").glob("ttyUSB*"))
+    print("host transport: USB CH340 -> STM32 USART1")
+    print(f"ttyUSB nodes: {len(serial_nodes)}")
     for node in serial_nodes[:16]:
         print(f"  {node}")
-    print(f"serial: {SERIAL_PORT} {mark(SERIAL_PORT.exists())}")
-    if SERIAL_PORT.exists():
-        print(f"serial read/write: {os.access(SERIAL_PORT, os.R_OK | os.W_OK)}")
+    by_id_paths = find_ch340_by_id_paths()
+    print(f"CH340 by-id links: {len(by_id_paths)}")
+    for path in by_id_paths[:8]:
+        print(f"  {path}")
+    try:
+        serial_port = Path(resolve_serial_port())
+    except RuntimeError as exc:
+        print(f"serial: MISSING ({exc})")
+    else:
+        print(f"serial: {serial_port} {mark(serial_port.exists())}")
+        print(f"serial read/write: {os.access(serial_port, os.R_OK | os.W_OK)}")
+    brltty_active = service_is_active("brltty-udev.service")
+    print(
+        "brltty-udev: "
+        + ("ACTIVE (can claim CH340)" if brltty_active else "inactive")
+    )
     for name in MODULES:
         print(f"module {name}: {mark(importlib.util.find_spec(name) is not None)}")
     models = sorted(Path(__file__).parent.joinpath("rknnModel").glob("*.rknn"))
     print(f"models: {len(models)}")
     for model in models[:8]:
         print(f"  {model.name} ({model.stat().st_size} bytes)")
-    print("audit is read-only; UART overlay, groups and packages are not changed")
+    print("audit is read-only; USB, groups and packages are not changed")
     return 0
 
 

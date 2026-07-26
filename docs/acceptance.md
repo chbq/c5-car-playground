@@ -43,8 +43,8 @@
 - [x] 架空底盘
 - [ ] 实测四轮 ID 与位置
 - [x] 验证四轮可驱动，前后、横移和旋转方向正确
-- [ ] 验证限时动作和自动停车
-- [ ] 验证通信丢失停车
+- [x] 验证限时动作和自动停车
+- [x] 验证 HOST 发送进程强制终止后的自动停车
 
 ## 门槛 E：PS2 遥控
 
@@ -65,12 +65,14 @@
 - [x] C/Python 共享 CRC8 黄金帧和有符号边界测试
 - [x] STM32 分片、连续帧、垃圾重同步、坏帧、ARM/STOP、超时、tick 回绕、PS2 互斥和队列溢出测试
 - [x] Python 打包、解析、状态、ACK 和链路超时测试
-- [x] USART2 中断接收与 HOST/PS2 仲裁通过 AC5 0 error、0 warning 构建
-- [ ] SSH 只读检查系统、Python、RKNN、`/dev/ttyS7` 和权限
-- [ ] UART7_M2 本地回环
-- [ ] 与 STM32 只做 QUERY/ARM/STOP 互通
-- [ ] 经明确授权烧录本阶段固件
-- [ ] 架空低速验证 `vx`、`vy`、`wz` 和 STOP
-- [ ] 验证终止/拔掉上位机后的 200 ms 停车并解除 ARM
+- [x] USART1 中断接收与 HOST/PS2 仲裁通过 AC5 0 error、0 warning 构建
+- [x] SSH 只读检查系统、Python、RKNN 和用户串口权限组
+- [x] Orange Pi 枚举 CH340，并确认稳定设备路径和读写权限
+- [x] 重复打开/关闭 CH340 20 次，未使 MCU 卡在 Bootloader
+- [x] 与 STM32 完成 QUERY、STOP、零速 ARM/TWIST、200 ms 自动解除 ARM 和坏 CRC 恢复
+- [x] 用户已烧录本阶段固件
+- [ ] 永久处理 `brltty-udev` 抢占 CH340，并在重启后复验
+- [x] 架空低速验证 `vx`、`vy`、`wz`、两组 45°斜移和 STOP
+- [x] 验证上位机进程被 `SIGKILL` 后的 200 ms 停车并解除 ARM
 - [ ] 验证 HOST/PS2 互斥及退出 PS2 后必须重新 ARM
 - [ ] 不在本阶段进行落地自动行驶

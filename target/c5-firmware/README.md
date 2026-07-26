@@ -4,8 +4,8 @@
 
 - 8 MHz HSE、72 MHz SYSCLK；
 - 上电保留 PA13/PA14 SWD，KEY1 长按后可切换 PS2；
-- USART1 PA9/PA10：CH340 诊断/串口下载；
-- USART2 PA2/PA3：Orange Pi HOST，115200，中断接收；
+- USART1 PA9/PA10：CH340 USB HOST/串口下载，115200，中断接收；
+- USART2 PA2/PA3：H1 上的 3.3 V 扩展串口，当前不承载 HOST；
 - USART3 PB10/PB11：四轮单线总线；
 - PB13：低电平亮的 PS2 状态灯；
 - PA8：上拉、低有效 KEY1。

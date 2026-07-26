@@ -6,7 +6,7 @@
 - PS2 解码、dead-man、中位解锁、超时和 KEY1 模式切换；
 - HOST CRC8 黄金帧、分片/连续帧、垃圾重同步、坏帧和载荷范围；
 - ARM、TWIST、STOP、200 ms 超时、PS2 互斥；
-- USART2 HAL 事件队列溢出、UART 错误恢复和状态发送。
+- HOST UART HAL 事件队列溢出、UART 错误恢复和状态发送。
 
 ```powershell
 .\tools\test-host.ps1

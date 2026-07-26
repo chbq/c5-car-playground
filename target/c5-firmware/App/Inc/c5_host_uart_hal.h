@@ -28,7 +28,7 @@ typedef struct
 } C5_HostUartHal;
 
 /**
- * @brief  Bind USART2 and clear parser, queue and error state.
+ * @brief  Bind the selected HOST UART and clear parser, queue and error state.
  * @param[out] hal   HOST UART adapter.
  * @param[in]  uart  Initialized UART handle.
  */

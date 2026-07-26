@@ -38,7 +38,10 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="C5 HOST UART utility; no subcommand performs QUERY only."
     )
-    parser.add_argument("--port", default="/dev/ttyS7")
+    parser.add_argument(
+        "--port", default="auto",
+        help="serial path; auto discovers one CH340 device",
+    )
     parser.add_argument("--baud", type=int, default=115200)
     subparsers = parser.add_subparsers(dest="action")
     subparsers.add_parser("query", help="read current STM32 control state")

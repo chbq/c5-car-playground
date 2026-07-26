@@ -208,7 +208,7 @@ int main(void)
                   &ps2_hal,
                   C5_Key1Pressed(),
                   HAL_GetTick());
-  C5_HostUartHal_Init(&host_uart, &huart2);
+  C5_HostUartHal_Init(&host_uart, &huart1);
   if (C5_HostUartHal_Start(&host_uart) != 0)
   {
     Error_Handler();
@@ -410,7 +410,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  if ((huart != NULL) && (huart->Instance == USART2))
+  if ((huart != NULL) && (huart == host_uart.uart))
   {
     C5_HostUartHal_RxCompleteIsr(&host_uart);
   }
@@ -418,7 +418,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 {
-  if ((huart != NULL) && (huart->Instance == USART2))
+  if ((huart != NULL) && (huart == host_uart.uart))
   {
     C5_HostUartHal_ErrorIsr(&host_uart);
   }

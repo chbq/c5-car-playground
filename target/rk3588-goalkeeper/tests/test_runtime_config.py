@@ -36,9 +36,12 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(constants["TPEs"], 6)
 
     def test_motion_link_does_not_regress_to_debug_uart(self):
+        constants = read_constants(PROJECT / "main.py")
         main_source = (PROJECT / "main.py").read_text(encoding="utf-8")
+        self.assertEqual(constants["SERIAL_PORT"], "auto")
         self.assertIn("from motion_link import MotionLink", main_source)
         self.assertNotIn("/dev/ttyS0", main_source)
+        self.assertNotIn("/dev/ttyS7", main_source)
         self.assertNotIn("send_football_x", main_source)
 
     def test_latest_detection_thresholds_are_preserved(self):

@@ -13,8 +13,8 @@
 
 ## HOST 链路
 
-1. SSH 运行只读 doctor，确认 `/dev/ttyS7`、权限和运行环境；
-2. UART7_M2 本地回环后按接线表连接 STM32，只发 QUERY/ARM/STOP；
+1. SSH 运行只读 doctor，确认 CH340、稳定设备路径、权限和运行环境；
+2. 用 USB 线连接核心板，只发 QUERY/ARM/STOP；
 3. 明确授权烧录后架空轮组，CLI 单轴限制在 ±200、单次不超过 2 秒；
 4. 分别验证 `vx`、`vy`、`wz`、STOP、进程终止/断线后的 200 ms 停车；
 5. 验证进入 PS2 会拒绝 ARM/TWIST，退出 PS2 后必须重新 ARM；

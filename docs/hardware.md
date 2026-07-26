@@ -18,29 +18,29 @@ C5 基线稳定前不引入 C25。C5 电机不是 MCU 直驱 PWM，不能按通�
 | 核心板 `ZL-KPZ32 V3` | STM32F103C8T6、CH340、W25Q64、HSE、启动/复位、LED | 核心板原理图、手册 |
 | 底板 `ZL-KPZ V3.4` | 电源、H1、DAT 转换、电机/舵机/传感器接口 | 底板原理图 |
 | 四个总线电机 | 每个模块内置控制器与功率驱动 | 总线电机手册 |
-| USB 上位机 | CH340 → USART1 | 原理图、手册 |
-| 独立 HOST 链路 | H1 引出 USART2 PA2/PA3，目标连接 Orange Pi 5 Pro UART7_M2 | H1 网络、SSH 板型确认；40-pin 待复核 |
+| 默认 HOST/下载链路 | Orange Pi 或 PC USB → CH340 → USART1 | 原理图、手册；软件传输层 |
+| 扩展上位机链路 | H1 引出 USART2 PA2/PA3，可接 3.3 V UART 或外置 RS485 收发器 | H1 网络 |
 | PS2 手柄 | PA12 CLK、PA13 ATT、PA14 CMD、PA15 DAT | 原理图与商家源码一致；6P 接口与通信已实测 |
 
 ## 信号结构
 
 ```mermaid
 flowchart LR
-    PC["PC / USB"] --> CH340["CH340"]
+    HOST["Orange Pi / PC USB Host"] --> CH340["CH340"]
     CH340 --> U1["USART1 PA9/PA10"]
     U1 --> MCU["STM32F103C8T6"]
     MCU --> U3["USART3 PB10/PB11"]
     U3 --> DAT["底板 UART-DAT 转换"]
     DAT --> M["四个总线电机 ID 006-009"]
     U3 --> LEGACY["商家蓝牙/同步接口共线"]
-    MCU <--> U2["USART2 PA2/PA3"]
-    U2 <--> OPI["Orange Pi 5 Pro UART7_M2 /dev/ttyS7"]
+    MCU <--> U2["USART2 PA2/PA3 扩展"]
     SWD["ST-LINK"] --> DBG["PA13 SWDIO / PA14 SWCLK"]
     DBG --> MCU
     PS2["PS2 手柄"] -. "KEY1 长按后复用 PA12-PA15" .-> MCU
 ```
 
-商家蓝牙口与 USART3 相关网络共线，不算独立上位机串口；独立链路固定使用 USART2。
+商家蓝牙口与 USART3 相关网络共线，不算独立上位机串口。默认 HOST 使用核心板
+CH340/USART1；USART2 保留为独立扩展链路，不与电机流量共线。
 PS2 与 SWD 不能同时驱动 PA13/PA14：上电默认保留 SWD，断开 ST-LINK 后
 长按 KEY1 才进入 PS2 模式，复位或再次长按恢复调试模式。详见
 [PS2 遥控与 SWD 复用](ps2-control.md)。
@@ -72,7 +72,8 @@ flowchart LR
 
 - 底板两排黑色母座是 H1 核心板安装座，不作为外部烧录插座；ST-LINK 直接接核心板排针的 PA13/SWDIO、PA14/SWCLK、GND 和 3.3 V。
 - 到货已接好的 6P 线连接 PS2 接收器与 PA12–PA15、3.3 V、GND。
-- C5 侧 HOST 固定为 H1-24/PA3 RX、H1-26/PA2 TX 和 H1-15/16 GND；Orange Pi 5 Pro 侧针脚待手册复核，复核前不接线；两板 VCC 不连接。
+- 默认 HOST 用 USB-A ↔ 核心板 USB 数据线连接 Orange Pi 与 CH340，不接 40-pin 或 H1 信号线。Linux 优先使用 `/dev/serial/by-id/...`；多串口时显式指定设备。
+- 核心板 USB VBUS 经 D5 单向送入板上 5 V，可给核心板逻辑供电且不作为电机动力。USB 插拔和 CH340 DTR/RTS 可能触发自动下载复位，须在 HOST 实测中核验。
 - 六个 3P 总线口并联，每根线同时承载 `DAT`、`VS` 和 `GND`；电机可分别直连或级联，轮位由设备 ID 决定。
 - 动力来自两节 14500 或绿色端子的 6–12 V 输入，经总开关送入 `VS`；USB 不作为电机动力电源。
 
@@ -85,9 +86,9 @@ flowchart LR
 | 电机 | 四个 6–12 V 单线 UART 总线电机 | 已确认 | 架空及整车运动通过 |
 | 轮位/ID | 006 左前、007 右前、008 左后、009 右后 | 商家配置 | 否 |
 | 指令 | `#idPpwmTtime!`；`P1500` 停车；255 广播 | 已确认 | 否 |
-| 诊断/下载 | USART1 PA9/PA10 → CH340，115200 | 已确认 | 未见实体 COM |
+| HOST/下载 | USART1 PA9/PA10 → CH340，115200 | 电气已确认；HOST 为软件设计 | 枚举、双向帧、零速 ARM/STOP、超时通过 |
 | 电机串口 | USART3 PB10/PB11 → DAT 电路 | 已确认 | 四轮响应通过 |
-| HOST 链路 | USART2 PA2/PA3，目标接 Orange Pi 5 Pro UART7_M2 | C5 侧确定，5 Pro 侧待复核 | SSH 已确认板型；未接线 |
+| 扩展串口 | USART2 PA2/PA3，经 H1 引出 | 已确认 | 未接线 |
 | 调试 | PA13 SWDIO、PA14 SWCLK，与 PS2 复用 | 电气连接已确认 | 核心板排针烧录通过；退出重连未测 |
 | PS2 | PA12 CLK、PA13 ATT、PA14 CMD、PA15 DAT；KEY1 PA8 切换模式 | 引脚已确认 | 模拟模式与三轴遥控通过 |
 | 外部 Flash | W25Q64，SPI2 PB12–PB15 | 已确认 | 否 |

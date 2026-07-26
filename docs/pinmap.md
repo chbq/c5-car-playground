@@ -4,11 +4,11 @@
 
 | 优先级 | 功能 | MCU 资源 | 板级路径 | 策略 |
 |---|---|---|---|---|
-| 固定 | USB 上位机、日志、串口下载 | USART1 PA9/PA10 | CH340、USB | 保留 |
+| 固定 | Orange Pi USB HOST、串口下载 | USART1 PA9/PA10 | CH340、USB | HOST 默认链路；与 PC 下载互斥使用 |
 | 固定 | 四轮电机总线 | USART3 PB10/PB11 | H1 → DAT 电路 | 保留 |
 | 条件复用 | 调试/烧录 | PA13 SWDIO、PA14 SWCLK | H1 11/12 | 上电保留；KEY1 长按后才交给 PS2 |
 | 次要/条件复用 | PS2 遥控 | PA12 CLK、PA13 ATT、PA14 CMD、PA15 DAT；PA8 KEY1 | H1 10–13、H1 1 | 与 SWD 互斥；显式长按进入，复位或再次长按退出 |
-| 固定 | Orange Pi HOST | USART2 PA2/PA3 | H1 26/24 ↔ Orange Pi 5 Pro UART7_M2，40-pin 待复核 | 115200，3.3 V，不接 VCC |
+| 扩展 | 3.3 V UART/外置 RS485 | USART2 PA2/PA3 | H1 26/24 | 当前保留，不承载默认 HOST |
 | RS485 可选 | 收发方向 | 候选 PA11 | H1 14 / KEY2 | 选定收发器前保留 |
 | 板载占用 | 外部 Flash | SPI2 PB12–PB15 | W25Q64；PB13 兼作 LED | 暂保留 |
 
@@ -41,7 +41,7 @@ PA8 同时标为 KEY1 和 IR。S1/S2 交叉复用同一对 PA0/PA1，并非四�
 
 | MCU 引脚 | 连接 | 约束 |
 |---|---|---|
-| PA9/PA10 | CH340 USART1 | 不在 H1；固定诊断/下载链路 |
+| PA9/PA10 | CH340 USART1 | 不在 H1；固定 USB HOST/串口下载链路 |
 | PB2/BOOT1 | 原理图接地 | 不作普通 GPIO |
 | PB12–PB15 | W25Q64 SPI2 | PB13 兼作低电平亮 LED |
 | PD0/PD1 | 8 MHz HSE | 已接受为工程输入 |

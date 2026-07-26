@@ -57,10 +57,10 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
-#define HOST_UART_TX_Pin GPIO_PIN_2
-#define HOST_UART_TX_GPIO_Port GPIOA
-#define HOST_UART_RX_Pin GPIO_PIN_3
-#define HOST_UART_RX_GPIO_Port GPIOA
+#define AUX_UART_TX_Pin GPIO_PIN_2
+#define AUX_UART_TX_GPIO_Port GPIOA
+#define AUX_UART_RX_Pin GPIO_PIN_3
+#define AUX_UART_RX_GPIO_Port GPIOA
 #define MOTOR_UART_TX_Pin GPIO_PIN_10
 #define MOTOR_UART_TX_GPIO_Port GPIOB
 #define MOTOR_UART_RX_Pin GPIO_PIN_11
@@ -69,10 +69,10 @@ void Error_Handler(void);
 #define STATUS_LED_N_GPIO_Port GPIOB
 #define KEY1_N_Pin GPIO_PIN_8
 #define KEY1_N_GPIO_Port GPIOA
-#define DIAG_UART_TX_Pin GPIO_PIN_9
-#define DIAG_UART_TX_GPIO_Port GPIOA
-#define DIAG_UART_RX_Pin GPIO_PIN_10
-#define DIAG_UART_RX_GPIO_Port GPIOA
+#define HOST_UART_TX_Pin GPIO_PIN_9
+#define HOST_UART_TX_GPIO_Port GPIOA
+#define HOST_UART_RX_Pin GPIO_PIN_10
+#define HOST_UART_RX_GPIO_Port GPIOA
 #define SWDIO_Pin GPIO_PIN_13
 #define SWDIO_GPIO_Port GPIOA
 #define SWCLK_Pin GPIO_PIN_14

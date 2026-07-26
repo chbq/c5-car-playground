@@ -19,7 +19,7 @@
 
 - 默认采用 8 MHz HSE、PLL ×9，运行异常时再复核
 - 方便时确认核心板/底板丝印版本
-- 确认 H1 方向及 USART2、SWD 连通性
+- 确认 CH340 USB、USART2 扩展口及 SWD 连通性
 - 查找可用 NRST 测点
 - 无电机动作地记录 3.3 V、5 V、VS 电源
 
@@ -40,8 +40,8 @@
 
 - 8 MHz HSE / 72 MHz SYSCLK
 - 上电保留 SWD
-- USART1：CH340 诊断/串口下载
-- USART2：独立上位机预留
+- USART1：CH340 USB HOST/串口下载
+- USART2：独立 3.3 V 上位机扩展预留
 - USART3：电机总线
 - 明确安全启动和故障处理
 - CubeMX 可重复生成、Keil 可命令行构建
@@ -82,17 +82,18 @@
 
 ## 阶段 6：香橙派 HOST 链路
 
-状态：软件已实现；Windows 验证进行中，实物未验收。
+状态：默认传输已改为 USB/CH340；软件验证进行中，实物未验收。
 
-- Orange Pi UART7_M2 ↔ STM32 USART2，115200、3.3 V、仅共地；
+- Orange Pi USB-A ↔ 核心板 CH340 ↔ STM32 USART1，115200、8N1；
 - 固定 11 字节 CRC8 命令/状态协议；
 - 显式 ARM、20 Hz TWIST、150 ms 动作保持、200 ms 断联停车；
-- USART2 逐字节中断接收，主循环执行命令并回报；
+- USART1 逐字节中断接收，主循环执行命令并回报；
 - HOST/PS2 互斥，STOP 全局有效，退出 PS2 后重新 ARM；
 - 香橙派 MotionLink、默认 QUERY 的限幅 CLI、端口锁和只读环境检查。
 
-实物顺序：SSH 环境检查 → UART7 回环 → STM32 QUERY/ARM/STOP → 明确授权后烧录 →
-架空低速三轴、STOP、断联停车和模式互斥。详见 [host-link.md](host-link.md)。
+实物顺序：SSH 环境检查 → CH340 枚举/权限 → DTR/RTS 重复开关检查 → 明确授权后
+烧录 → STM32 QUERY/ARM/STOP → 架空低速三轴、STOP、断联停车和模式互斥。详见
+[host-link.md](host-link.md)。
 
 ## 阶段 7：自动守门
 

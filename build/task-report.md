@@ -296,3 +296,71 @@ Date: 2026-07-26
   missing because UART7_M2 remains disabled.
 - No service or `main.py` was started. The uploaded staging tree sent no serial
   command and caused no motor action.
+
+## Phase 4 HOST transport migration to USB/CH340
+
+Date: 2026-07-26
+
+- Replaced the unresolved Orange Pi UART7_M2/40-pin route with the core-board
+  USB CH340 path. STM32 HOST RX/TX now uses USART1 PA10/PA9; USART2 PA2/PA3
+  remains initialized as an uncommitted 3.3 V expansion UART without RX IRQ.
+- Kept the fixed frame protocol, ARM gate, timeouts, fault stops and HOST/PS2
+  arbitration unchanged. UART callbacks now match the adapter's bound handle.
+- Added Orange Pi CH340 discovery with `C5_HOST_PORT`, `/dev/c5-host`, stable
+  `/dev/serial/by-id` and single-`ttyUSB` fallback selection.
+- Changed pyserial startup to configure DTR/RTS inactive before opening and to
+  request OS-level exclusive access. The core-board auto-download transient
+  remains a physical acceptance item.
+- Updated the doctor, CLI, unit tests, CubeMX pin labels/NVIC configuration,
+  wiring guide, pin budget, acceptance gates and current task.
+
+| Command | Result |
+|---|---|
+| `tools/test-host.ps1` | Exit 0; `c5_motion_tests: PASS` |
+| `tools/test-rk-host.ps1` | Exit 0; 15 Python tests and `compileall` passed |
+| `tools/verify.ps1` | Exit 0; doctor, both host suites, CubeMX generation and AC5 rebuild passed |
+
+Program size: Code 8340, RO-data 296, RW-data 36, ZI-data 2020 bytes.
+
+Firmware image:
+`target/c5-firmware/MDK-ARM/c5-firmware/c5-firmware.hex`.
+
+No firmware was flashed, no serial device was opened and no motor command was
+sent. CH340 enumeration/permissions, repeated DTR/RTS open-close behavior,
+STM32 QUERY/ARM/STOP and raised-chassis motion tests remain hardware work.
+
+### USB/CH340 physical protocol acceptance
+
+- The user flashed the USART1 HOST firmware and connected the core-board USB
+  port to the Orange Pi 5 Pro.
+- USB enumeration reported QinHeng `1a86:7523`. The kernel initially created
+  `ttyUSB0`, but active `brltty-udev.service` claimed the interface and detached
+  `ch341`. The service was stopped temporarily and `ch341` rebound; it was not
+  disabled, masked or uninstalled.
+- The stable path is
+  `/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`; the `orangepi` user has
+  `dialout` access. Both application services remained inactive.
+- Deployed the uncommitted working tree to the isolated directory
+  `/home/orangepi/Desktop/c5-goalkeeper-staging-ch340-20260726/`; the original
+  visual project and earlier staging tree were not overwritten. The 114,176
+  byte archive SHA-256 matched locally and remotely:
+  `c4352da4aef0b7492737b039982cef4947afe930d3af7053a8c518becd443d5e`.
+- Board-side 15 tests, `compileall` and the updated read-only doctor passed.
+- QUERY and STOP returned `OK/HOST/DISARMED/STOPPED/errors=0`.
+- Twenty independent open/QUERY/close cycles all passed, with no observed
+  Bootloader lock-up. Zero-speed ARM/TWIST stayed stopped and STOP disarmed.
+- ARM without refresh automatically returned to DISARMED/STOPPED after 350 ms.
+- A corrupted CRC produced `BAD_CRC`, incremented the error count to one and
+  stopped/disarmed; the next legal QUERY returned OK with the link usable.
+
+- With explicit user authorization and the wheel set raised, `vx=100`,
+  `vy=100` and `wz=100` each ran for 0.5 seconds with the expected physical
+  direction and returned to DISARMED/STOPPED with zero errors.
+- Two diagonal mixes passed: `vx=50,vy=50` drove only left-front/right-rear;
+  `vx=50,vy=-50` drove only right-front/left-rear.
+- A visible watchdog test ran `vx=50` and killed the sender with `SIGKILL`
+  after 1.2 seconds, bypassing the Python `finally` STOP. The wheels visibly
+  stopped and a later QUERY returned `OK/HOST/DISARMED/STOPPED/errors=0`.
+
+Persistent `brltty-udev` handling, reboot verification, physical USB unplug
+and HOST/PS2 arbitration remain open. No ground-driving test was performed.
