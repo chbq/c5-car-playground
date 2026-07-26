@@ -20,6 +20,7 @@
 10. [ ] SSH/UART/烧录和架空实测；须另获授权。
 11. [x] SSH 确认 5 Pro/Ubuntu 22.04.5，并备份远端最新视觉源码和 7 个 RKNN 模型；哈希一致。
 12. [x] 合入远端 `model_26.7.25_i8.rknn`、6 worker、NMS 0.2，同时保留新 MotionLink，未恢复 `/dev/ttyS0` 旧协议。
+13. [x] 提交 `ac9322a` 并暂存部署到香橙派 `~/Desktop/c5-goalkeeper-staging-ac9322a/`；复用原模型目录，板端 10 个测试通过，未启动服务。
 
 ## 固定行为
 

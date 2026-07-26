@@ -276,5 +276,23 @@ Date: 2026-07-26
 | final AC5 rebuild after restoring schema 2.1 Keil copy | Exit 0; 0 errors, 0 warnings; Code 8356 bytes |
 | remote YOLO dependency import check | Exit 0; RKNNLite/OpenCV/NumPy/pyserial available |
 
-No remote file, boot configuration or service was changed. No UART pins were
-connected, no firmware was flashed and no motor command was sent.
+上述审计与备份阶段未修改远端文件、启动配置或服务。随后仅新增独立暂存目录，
+仍未覆盖原视觉工程。未连接 UART、烧录固件或发送电机命令。
+
+### Staged Orange Pi deployment
+
+- Committed the vertical feature as `ac9322a` (`feat: add Orange Pi host motion
+  link`) after excluding all local and binary assets.
+- Generated a 112,640-byte Git archive containing 24 tracked Orange Pi entries;
+  no model, video, wheel, cache, IDE or agent file was present. Local and remote
+  archive SHA-256 both equal
+  `c46b4c415b84e3099c24eda315fe76a2710822267ba43a9ebe5cd5b6ece246bb`.
+- Extracted it to
+  `/home/orangepi/Desktop/c5-goalkeeper-staging-ac9322a/` and linked its
+  `rknnModel` to the unchanged current model directory. The existing
+  `/home/orangepi/Desktop/rk3588-yolov8/` tree was not overwritten.
+- Board-side unit tests (10), `compileall` and `doctor.py` passed. Doctor confirms
+  the seven models and dependencies, while correctly reporting `/dev/ttyS7`
+  missing because UART7_M2 remains disabled.
+- No service or `main.py` was started. The uploaded staging tree sent no serial
+  command and caused no motor action.
