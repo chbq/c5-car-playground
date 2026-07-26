@@ -1,0 +1,22 @@
+[Unit]
+Description=C5 RK3588 Goalkeeper Vision
+After=graphical.target
+Wants=graphical.target
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=orangepi
+Group=orangepi
+WorkingDirectory=/home/orangepi/c5-car-playground/target/rk3588-goalkeeper
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/orangepi/.Xauthority
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/sleep 8
+ExecStart=/home/orangepi/miniconda3/envs/yolov8/bin/python3 /home/orangepi/c5-car-playground/target/rk3588-goalkeeper/main.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target

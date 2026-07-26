@@ -1,17 +1,19 @@
-# C5 麦克纳姆小车固件
+# C5 麦克纳姆守门员
 
-基于 STM32CubeMX、HAL 和 Keil AC5 的 C5 固件与自动化工作流。当前已完成：
+基于 STM32CubeMX、HAL、Keil AC5 和 RK3588 的 C5 固件与自动化工作流。当前已完成：
 
 1. 可审计的硬件事实与引脚分配；
 2. 可重复生成、测试、构建和显式烧录的工具链；
 3. USART3 四轮总线电机协议、麦轮混控和失效停车；
-4. USART1 诊断/串口下载、USART2 独立上位机预留；
-5. SWD/PS2 运行时切换和 dead-man 遥控。
+4. USART1 诊断/串口下载、USART2 固定 HOST 运动协议；
+5. SWD/PS2 运行时切换和 dead-man 遥控；
+6. 香橙派 MotionLink、串口 CLI、环境检查和视觉主程序安全接入。
 
 ## 目录用途
 
 - `reference/c5-vendor/`：本机放置 C5 商家资料、原理图、例程和原始工程；默认只读且不提交 Git。
 - `target/c5-firmware/`：唯一持续开发的目标工程。
+- `target/rk3588-goalkeeper/`：香橙派视觉与 HOST 运动链路源码；模型和视频不提交。
 - `docs/`：硬件事实、引脚表、阶段计划和验收记录；入口见 [`docs/README.md`](docs/README.md)。
 - `tasks/`：Codex 当前任务与已完成任务。
 - `prompts/`：分阶段启动提示词。
@@ -26,6 +28,7 @@ Copy-Item .\tools\local.env.example.ps1 .\tools\local.env.ps1
 Set-ExecutionPolicy -Scope Process Bypass
 .\tools\doctor.ps1
 .\tools\test-host.ps1
+.\tools\test-rk-host.ps1
 .\tools\generate.ps1
 .\tools\build.ps1 -Rebuild
 .\tools\verify.ps1
@@ -46,8 +49,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 - 阶段 1：CubeMX + Keil 基线（完成）
 - 阶段 2：麦轮运动与失效停车（架空及整车三轴运动通过，断联停车待补）
 - 阶段 3：PS2/SWD 双模式遥控（PS2、KEY1 和车辆方向实测通过，SWD 恢复待补）
-- 下一阶段：USART2 上位机运动指令与独立通信看门狗
-- 后续：地面标定、无线失联策略和闭环功能
+- 阶段 4：香橙派到 C5 的 HOST 运动链路（软件实现完成，实物验收待做）
+- 后续：视觉定位、自动拦截、地面标定和无线失联策略
 
 详细入口见 [`docs/README.md`](docs/README.md)，当前任务见
 [`tasks/current.md`](tasks/current.md)。

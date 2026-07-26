@@ -198,3 +198,83 @@ following remain local and are excluded by `.gitignore`:
 - Keil build outputs including HEX, AXF, MAP, listings and object files;
 - generated logs and diagnostics under `build/` except this handwritten report;
 - `tools/local.env.ps1` and other machine-local state.
+
+## Phase 4 Orange Pi to C5 motion link
+
+Date: 2026-07-25
+
+- Moved the Orange Pi source tree to `target/rk3588-goalkeeper/`; models,
+  videos, wheels, archives, IDE/cache files and old agent metadata remain ignored.
+- Selected Orange Pi `UART7_M2` (`/dev/ttyS7`) and C5 USART2 PA2/PA3 with
+  crossed 3.3 V UART signals and GND only. `/dev/ttyS0` remains the board's
+  1.5 Mbaud debug console and is not used.
+- Added the fixed 11-byte CRC-8/ATM ARM/TWIST/STOP/QUERY command and status
+  protocol with signed axes in `[-1000,1000]`.
+- Added USART2 byte-interrupt receive, a four-entry event queue, main-context
+  command execution/status TX, explicit ARM, 150 ms motion hold, 200 ms HOST
+  disarm timeout and HOST/PS2 ownership arbitration.
+- Added Python `MotionLink`, exclusive port locking, ACK/status watchdogs,
+  a QUERY-by-default bounded CLI and a read-only Orange Pi environment audit.
+- Removed the old football-x serial protocol. `main.py` now only observes link
+  state and attempts STOP on exit; it does not ARM or command motion.
+- Preserved the pre-existing local Keil schema 2.1 work copy under ignored
+  `build/local-preserve/`, saved CubeMX-generated variants separately, restored
+  the local copy and synchronized all 11 App source files before the final build.
+
+| Command | Result |
+|---|---|
+| `tools/test-host.ps1` | Exit 0; MSVC `/W4 /WX`; protocol, parser, queue/UART faults, HOST policy and PS2 arbitration passed |
+| `tools/test-rk-host.ps1` | Exit 0; 7 Python tests and `compileall` passed |
+| `tools/generate.ps1` | Exit 0; CubeMX completion checks passed; 11 App sources synchronized |
+| `tools/build.ps1 -Rebuild` | Exit 0; AC5.06u7; 0 errors, 0 warnings |
+| `tools/verify.ps1` | Exit 0 across doctor, both host suites, CubeMX generation and AC5 build |
+| final build after restoring local schema 2.1 copy | Exit 0; 0 errors, 0 warnings |
+
+Program size: Code 8352, RO-data 296, RW-data 36, ZI-data 2020 bytes.
+
+Firmware image:
+`target/c5-firmware/MDK-ARM/c5-firmware/c5-firmware.hex`.
+
+No firmware was flashed, no SSH or physical serial link was opened, and no
+motor command was sent. Orange Pi environment inspection, UART7 loopback,
+STM32 QUERY/ARM/STOP and raised-chassis motion/timeout/mode-interlock tests
+remain hardware acceptance work requiring explicit authorization.
+
+## Phase 4 Orange Pi audit and visual baseline sync
+
+Date: 2026-07-26
+
+- Established SSH key access to `orangepi@192.168.137.168` through the Windows
+  mobile hotspot; the original shared WLAN allowed ARP but timed out on SSH.
+- Confirmed the board is `RK3588S OPi 5 Pro`, running Orange Pi Ubuntu 22.04.5
+  with kernel 6.1.43 and Python 3.10.12. This corrects the earlier 5 Plus
+  assumption, so the previous pin 24/26 mapping is suspended pending a 5 Pro
+  manual check.
+- Confirmed `/dev/ttyS0` exists, `/dev/ttyS7` does not, and the boot image
+  provides `rk3588-uart7-m2.dtbo` without enabling it. No overlay was changed.
+- Copied 13 current remote source/service files and all seven RKNN models to
+  ignored `build/remote-snapshot/orangepi5pro-20260726/`; source and model
+  SHA-256 hashes matched the remote files. Videos, wheel, cache and IDE data
+  were not copied.
+- Compared the non-Git remote visual tree with the local Phase 4 tree. Imported
+  the active `model_26.7.25_i8.rknn` selection, six inference workers and NMS
+  threshold 0.2 while retaining MotionLink, safe exit STOP and the serial-free
+  StateManager. The old `/dev/ttyS0` football-x protocol was not restored.
+- Added AST-based runtime-configuration regression tests. The first run exposed
+  a test helper that attempted to literal-evaluate runtime calls; the helper was
+  corrected and the rerun passed.
+- Confirmed the board's `yolov8` Python 3.10.20 environment imports RKNNLite,
+  OpenCV 5.0.0, NumPy 2.2.6 and pyserial. Both known systemd services were
+  inactive and no application process was running; no service state was changed.
+
+| Command | Result |
+|---|---|
+| SSH identity/OS/serial/overlay inspection | Exit 0; read-only |
+| SCP source/model backup and SHA-256 comparison | 20 files verified; zero mismatches |
+| `tools/test-rk-host.ps1` via process-level execution-policy bypass | Exit 0; 10 tests and `compileall` passed |
+| `tools/verify.ps1` | Exit 0; doctor, C/Python host tests, CubeMX and AC5 passed |
+| final AC5 rebuild after restoring schema 2.1 Keil copy | Exit 0; 0 errors, 0 warnings; Code 8356 bytes |
+| remote YOLO dependency import check | Exit 0; RKNNLite/OpenCV/NumPy/pyserial available |
+
+No remote file, boot configuration or service was changed. No UART pins were
+connected, no firmware was flashed and no motor command was sent.

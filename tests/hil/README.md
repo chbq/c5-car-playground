@@ -1,29 +1,21 @@
-# Hardware-in-the-loop tests
+# 实物验收
 
-Automated HIL tests are not enabled yet. The first manual PS2 acceptance must
-be recorded before a script is allowed to issue any command.
+当前不启用自动 HIL。任何脚本都不得自动烧录或发送无限时运动指令；实物动作必须架空、低速、限时并再次获得明确授权。
 
-Before adding them, define:
-- a machine-readable diagnostic protocol;
-- bounded motor test commands;
-- automatic stop behavior;
-- physical preconditions such as raising the chassis;
-- expected result records.
+## PS2/SWD
 
-## PS2/SWD manual acceptance outline
+1. 架空底盘，初始隔离电机动力；
+2. 确认复位后 SWD 可用、PB13 熄灭、PS2 引脚未占用；
+3. 断开正在驱动的 ST-LINK，长按 KEY1 2 秒进入 PS2；
+4. 验证模拟中位解锁、L1/R1 dead-man 和三个轴；
+5. 验证松开 dead-man、短按 KEY1、拔掉接收器均停车；
+6. 长按退出后重新连接 SWD，复位也必须恢复调试模式。
 
-1. Raise the chassis and initially isolate motor power.
-2. Confirm reset leaves SWD available, the LED off and PS2 pins unclaimed.
-3. Measure KEY1 PA8 idle/pressed levels; correct `C5_KEY1_ACTIVE_LOW` if needed.
-4. Disconnect the active ST-LINK, hold KEY1 for 2 seconds and observe the
-   disarmed LED blink.
-5. Confirm the receiver reaches analog mode and neutral frames arm the solid
-   PS2-mode LED without producing a motion frame.
-6. Re-enable motor power only after the earlier single-wheel acceptance gates.
-7. Hold L1 or R1 and test each axis at a bounded low limit, one axis at a time.
-8. For every axis, release the shoulder button and confirm immediate stop.
-9. Repeat while unplugging the receiver and with a short KEY1 press.
-10. Hold KEY1 for 2 seconds to exit, then reconnect/refresh the debugger and
-    confirm SWD access. Reset must also recover debug mode.
+## HOST 链路
 
-No HIL script may flash automatically or send an unbounded motor command.
+1. SSH 运行只读 doctor，确认 `/dev/ttyS7`、权限和运行环境；
+2. UART7_M2 本地回环后按接线表连接 STM32，只发 QUERY/ARM/STOP；
+3. 明确授权烧录后架空轮组，CLI 单轴限制在 ±200、单次不超过 2 秒；
+4. 分别验证 `vx`、`vy`、`wz`、STOP、进程终止/断线后的 200 ms 停车；
+5. 验证进入 PS2 会拒绝 ARM/TWIST，退出 PS2 后必须重新 ARM；
+6. 本阶段不做落地自动行驶。

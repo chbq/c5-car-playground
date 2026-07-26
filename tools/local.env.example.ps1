@@ -26,3 +26,8 @@ $Env:C5_FIRMWARE_IMAGE = "D:\path\to\c5-car-playground\target\c5-firmware\MDK-AR
 # Optional:
 $Env:C5_SERIAL_PORT = ""
 $Env:C5_SERIAL_BAUD = ""
+
+# Optional Orange Pi SSH audit settings (never store passwords here):
+$Env:C5_RK_SSH_TARGET = "orangepi@192.168.1.20"
+$Env:C5_RK_PROJECT_PATH = "/home/orangepi/c5-car-playground/target/rk3588-goalkeeper"
+$Env:C5_RK_PYTHON = "/home/orangepi/miniconda3/envs/yolov8/bin/python3"

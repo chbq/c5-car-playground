@@ -1,44 +1,26 @@
-# C5 Target Firmware
+# C5 STM32 固件
 
-This is the long-lived STM32CubeMX + Keil target project for the C5 car.
+本目录是唯一长期维护的 STM32CubeMX + Keil HAL 工程，目标为 STM32F103C8T6：
 
-The baseline is generated from `c5-firmware.ioc` for STM32F103C8T6 with:
+- 8 MHz HSE、72 MHz SYSCLK；
+- 上电保留 PA13/PA14 SWD，KEY1 长按后可切换 PS2；
+- USART1 PA9/PA10：CH340 诊断/串口下载；
+- USART2 PA2/PA3：Orange Pi HOST，115200，中断接收；
+- USART3 PB10/PB11：四轮单线总线；
+- PB13：低电平亮的 PS2 状态灯；
+- PA8：上拉、低有效 KEY1。
 
-- 8 MHz HSE and 72 MHz system clock;
-- SWD on PA13/PA14 at boot, dynamically shareable with PS2 control;
-- USART1 diagnostic/CH340 link on PA9/PA10;
-- USART2 host expansion link on PA2/PA3;
-- USART3 motor bus on PB10/PB11;
-- active-low PB13 status LED, initially high/off.
-- KEY1 on PA8 as an input pull-up (active-low assumption pending hardware check).
+上电主动广播停车，不自动运动。HOST 必须先 ARM 才接受非零 TWIST；150 ms 动作保持，200 ms 未刷新即停车并解除 ARM。PS2 与 HOST 互斥，STOP 始终有效。HOST 接收 ISR 只解析并投递事件，所有运动和串口发送均在主循环执行。
 
-The `App/` layer now contains the first unverified motion implementation. At
-startup it sends the vendor broadcast stop frame on USART3 and then services
-the motion timeout/fault state machine. It does not schedule any movement or
-parse host commands.
+`App/` 保存手写逻辑；生成代码只在 `USER CODE` 区接入。CubeMX 生成后，`sync-keil-project.ps1` 会确定性加入 `App/Src/*.c` 和 `App/Inc`。
 
-The firmware includes one-image runtime switching between debug and PS2 modes.
-PS2 mode uses PA12 CLK, PA13 ATT, PA14 CMD and PA15 DAT. Entering it requires a
-KEY1 long press and an unplugged debug probe; reset always restores debug mode.
-
-Application layout:
-
-```text
-App/
-  Inc/
-  Src/
-Core/
-Drivers/
-MDK-ARM/
-```
-
-Regenerate and rebuild from the repository root:
+从仓库根目录验证：
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\generate.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\test-host.ps1
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\build.ps1 -Rebuild
+.\tools\test-host.ps1
+.\tools\generate.ps1
+.\tools\build.ps1 -Rebuild
+.\tools\verify.ps1
 ```
 
-`generate.ps1` calls `sync-keil-project.ps1` so the generated MDK project always
-contains `App/Src/*.c` and `App/Inc`. None of these commands flash hardware.
+这些命令不会烧录或驱动电机。协议和实物验收见 [`docs/host-link.md`](../../docs/host-link.md)。

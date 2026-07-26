@@ -36,3 +36,15 @@ target/c5-firmware/MDK-ARM/RTE/
 # Language-local caches.
 __pycache__/
 .venv/
+
+# Local Orange Pi assets and imported tool state.
+target/rkn3588-yolov8.zip
+target/rk3588-goalkeeper/.idea/
+target/rk3588-goalkeeper/.claude/
+target/rk3588-goalkeeper/CLAUDE.md
+target/rk3588-goalkeeper/docs/agents/
+target/rk3588-goalkeeper/*.whl
+target/rk3588-goalkeeper/*.mp4
+target/rk3588-goalkeeper/capture_*.jpg
+target/rk3588-goalkeeper/capture_*.png
+target/rk3588-goalkeeper/rknnModel/

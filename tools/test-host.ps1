@@ -28,6 +28,7 @@ $testBuildDir = Join-Path $BuildDir "host-tests"
 New-Item -ItemType Directory -Force -Path $testBuildDir | Out-Null
 
 $testSource = Join-Path $RepoRoot "tests\host\c5_motion_tests.c"
+$testStubs = Join-Path $RepoRoot "tests\host\stubs"
 $appInclude = Join-Path $RepoRoot "target\c5-firmware\App\Inc"
 $appSource = Join-Path $RepoRoot "target\c5-firmware\App\Src"
 $testExe = Join-Path $testBuildDir "c5_motion_tests.exe"
@@ -39,12 +40,16 @@ $lines = @(
     '@echo off',
     "call `"$vsDevCmd`" -arch=x64 -host_arch=x64 >nul",
     'if errorlevel 1 exit /b %errorlevel%',
-    ('cl.exe /nologo /W4 /WX /TC /I"{0}" "{1}" "{2}" "{3}" "{4}" "{5}" "{6}" "{7}" /Fe:"{8}"' -f `
+    ('cl.exe /nologo /W4 /WX /TC /I"{0}" /I"{1}" "{2}" "{3}" "{4}" "{5}" "{6}" "{7}" "{8}" "{9}" "{10}" "{11}" /Fe:"{12}"' -f `
+        $testStubs,
         $appInclude,
         $testSource,
         (Join-Path $appSource 'c5_motor_protocol.c'),
         (Join-Path $appSource 'c5_mecanum.c'),
         (Join-Path $appSource 'c5_motion.c'),
+        (Join-Path $appSource 'c5_host_protocol.c'),
+        (Join-Path $appSource 'c5_host_control.c'),
+        (Join-Path $appSource 'c5_host_uart_hal.c'),
         (Join-Path $appSource 'c5_ps2.c'),
         (Join-Path $appSource 'c5_remote.c'),
         (Join-Path $appSource 'c5_control.c'),

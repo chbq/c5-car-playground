@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "c5_host_control.h"
 #include "c5_ps2.h"
 #include "c5_remote.h"
 
@@ -33,6 +34,7 @@ typedef enum
 typedef struct
 {
     C5_Remote remote;
+    C5_HostControl host;
     C5_ControlReadFrame read_frame;
     void *read_context;
     C5_ControlModeChange enter_ps2;
@@ -97,5 +99,47 @@ C5_ControlState C5_Control_GetState(const C5_Control *control);
  * @return Current C5_RemoteState.
  */
 C5_RemoteState C5_Control_GetRemoteState(const C5_Control *control);
+
+/**
+ * @brief  Apply one validated HOST command under HOST/PS2 ownership rules.
+ * @param[in,out] control  Control arbiter.
+ * @param[in]     command  Validated HOST command.
+ * @param[in]     now_ms   Current monotonic millisecond tick.
+ * @return Protocol result reported to the HOST.
+ * @note STOP and QUERY are accepted in both modes; ARM and TWIST require the
+ *       boot/debug HOST mode.
+ */
+C5_HostResult C5_Control_ProcessHostCommand(C5_Control *control,
+                                            const C5_HostCommand *command,
+                                            uint32_t now_ms);
+
+/**
+ * @brief  Stop all control sources after a malformed frame or UART fault.
+ * @param[in,out] control  Control arbiter.
+ * @param[in]     now_ms   Current monotonic millisecond tick.
+ * @return OK after a confirmed stop, otherwise MOTION_FAULT.
+ */
+C5_HostResult C5_Control_HostFault(C5_Control *control, uint32_t now_ms);
+
+/**
+ * @brief  Fill the fixed HOST status fields from current control state.
+ * @param[in]  control      Control arbiter.
+ * @param[in]  sequence     Command sequence being acknowledged.
+ * @param[in]  result       Command result.
+ * @param[in]  error_count  Saturating UART/protocol error count.
+ * @param[out] status       Filled status object.
+ */
+void C5_Control_GetHostStatus(const C5_Control *control,
+                              uint8_t sequence,
+                              C5_HostResult result,
+                              uint16_t error_count,
+                              C5_HostStatus *status);
+
+/**
+ * @brief  Read the HOST arming state.
+ * @param[in] control  Control object; null is treated as disarmed.
+ * @return Current C5_HostLinkState.
+ */
+C5_HostLinkState C5_Control_GetHostState(const C5_Control *control);
 
 #endif

@@ -59,3 +59,18 @@
 - [ ] 解决手柄关机后接收器仍返回合法帧的无线失联判定
 - [ ] KEY1 长按退出后可重新连接 SWD
 - [x] 架空验证 dead-man 与三轴方向
+
+## 门槛 F：香橙派 HOST 链路
+
+- [x] C/Python 共享 CRC8 黄金帧和有符号边界测试
+- [x] STM32 分片、连续帧、垃圾重同步、坏帧、ARM/STOP、超时、tick 回绕、PS2 互斥和队列溢出测试
+- [x] Python 打包、解析、状态、ACK 和链路超时测试
+- [x] USART2 中断接收与 HOST/PS2 仲裁通过 AC5 0 error、0 warning 构建
+- [ ] SSH 只读检查系统、Python、RKNN、`/dev/ttyS7` 和权限
+- [ ] UART7_M2 本地回环
+- [ ] 与 STM32 只做 QUERY/ARM/STOP 互通
+- [ ] 经明确授权烧录本阶段固件
+- [ ] 架空低速验证 `vx`、`vy`、`wz` 和 STOP
+- [ ] 验证终止/拔掉上位机后的 200 ms 停车并解除 ARM
+- [ ] 验证 HOST/PS2 互斥及退出 PS2 后必须重新 ARM
+- [ ] 不在本阶段进行落地自动行驶

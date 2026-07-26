@@ -3,10 +3,9 @@
 
 /*
  * Values that are expected to change during raised-chassis calibration live
- * here. The vendor source supports +/-1000; the first application limit is
- * kept at the vendor demo's normal speed of 700.
+ * here. Use the full +/-1000 range supported by the vendor motor protocol.
  */
-#define C5_MOTION_OUTPUT_LIMIT       700
+#define C5_MOTION_OUTPUT_LIMIT      1000
 #define C5_MOTION_MAX_HOLD_MS        1000U
 #define C5_MOTION_STOP_RETRY_MS      100U
 #define C5_MOTOR_UART_TIMEOUT_MS     20U

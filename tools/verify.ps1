@@ -13,6 +13,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 & (Join-Path $PSScriptRoot "test-host.ps1")
+& (Join-Path $PSScriptRoot "test-rk-host.ps1")
 
 if (-not $SkipGenerate) {
     & (Join-Path $PSScriptRoot "generate.ps1")

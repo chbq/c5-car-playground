@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "c5_control.h"
 #include "c5_control_config.h"
+#include "c5_host_uart_hal.h"
 #include "c5_motion.h"
 #include "c5_motion_config.h"
 #include "c5_motor_bus_hal.h"
@@ -54,6 +55,7 @@ static C5_MotorBusHal motor_bus;
 static C5_Motion motion;
 static C5_Control control;
 static C5_Ps2Hal ps2_hal;
+static C5_HostUartHal host_uart;
 static uint8_t motion_initialized;
 /* USER CODE END PV */
 
@@ -65,6 +67,7 @@ static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
 static int C5_Key1Pressed(void);
+static void C5_HostLinkService(uint32_t now_ms);
 static void C5_StatusLedService(uint32_t now_ms);
 
 /* USER CODE END PFP */
@@ -81,6 +84,56 @@ static int C5_Key1Pressed(void)
 #else
   return (state == GPIO_PIN_SET) ? 1 : 0;
 #endif
+}
+
+static void C5_HostLinkService(uint32_t now_ms)
+{
+  C5_HostRxEvent event;
+  C5_HostResult result;
+  C5_HostStatus status;
+  int available;
+
+  available = C5_HostUartHal_ConsumeFault(&host_uart, &result);
+  if (available == 1)
+  {
+    while (C5_HostUartHal_PopEvent(&host_uart, &event) == 1)
+    {
+      /* Discard pre-fault commands; recovery requires a fresh ARM. */
+    }
+    (void)C5_Control_HostFault(&control, now_ms);
+    C5_Control_GetHostStatus(&control,
+                             0xFFU,
+                             result,
+                             C5_HostUartHal_GetErrorCount(&host_uart),
+                             &status);
+    (void)C5_HostUartHal_SendStatus(&host_uart, &status);
+    return;
+  }
+
+  while (C5_HostUartHal_PopEvent(&host_uart, &event) == 1)
+  {
+    result = event.result;
+    if (result != C5_HOST_RESULT_OK)
+    {
+      (void)C5_Control_HostFault(&control, now_ms);
+    }
+    else
+    {
+      result = C5_Control_ProcessHostCommand(&control,
+                                             &event.command,
+                                             now_ms);
+    }
+    C5_Control_GetHostStatus(&control,
+                             event.sequence,
+                             result,
+                             C5_HostUartHal_GetErrorCount(&host_uart),
+                             &status);
+    if (C5_HostUartHal_SendStatus(&host_uart, &status) != 0)
+    {
+      (void)C5_Control_HostFault(&control, now_ms);
+      return;
+    }
+  }
 }
 
 static void C5_StatusLedService(uint32_t now_ms)
@@ -155,6 +208,11 @@ int main(void)
                   &ps2_hal,
                   C5_Key1Pressed(),
                   HAL_GetTick());
+  C5_HostUartHal_Init(&host_uart, &huart2);
+  if (C5_HostUartHal_Start(&host_uart) != 0)
+  {
+    Error_Handler();
+  }
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -168,6 +226,7 @@ int main(void)
 
     now_ms = HAL_GetTick();
     C5_Control_Service(&control, C5_Key1Pressed(), now_ms);
+    C5_HostLinkService(now_ms);
     C5_Motion_Service(&motion, now_ms);
     C5_StatusLedService(now_ms);
   }
@@ -349,6 +408,21 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+  if ((huart != NULL) && (huart->Instance == USART2))
+  {
+    C5_HostUartHal_RxCompleteIsr(&host_uart);
+  }
+}
+
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
+{
+  if ((huart != NULL) && (huart->Instance == USART2))
+  {
+    C5_HostUartHal_ErrorIsr(&host_uart);
+  }
+}
 
 /* USER CODE END 4 */
 

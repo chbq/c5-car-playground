@@ -1,61 +1,39 @@
-# Current Task - Phase 3 PS2 Remote Control
+# 当前任务：Phase 4 香橙派到 C5 的运动链路
 
-Status: Complete; software verified and partially hardware accepted
+状态：实现完成且软件验证通过，实物未验收
 
-## Goal
+## 目标
 
-Implement one firmware image with a debug/SWD mode and an explicitly entered
-PS2 remote-control mode. Add KEY1 switching, runtime SWD release/restoration,
-HAL-based PS2 I/O, mecanum stick mapping, dead-man control and host tests. Do
-not flash hardware or drive motors.
+打通“香橙派发送 `vx/vy/wz`，STM32 安全执行并逐帧回报状态”的完整链路；本任务不实现自动守门算法，不自动烧录或动车。
 
-## Planned work
+## 工作项
 
-1. [x] Reconfirm vendor PS2 pins, request bytes, analog mode and data layout.
-2. [x] Document the two runtime modes, transition order, controls and test boundary.
-3. [x] Add PA8 KEY1 to CubeMX while preserving SWD as the boot configuration.
-4. [x] Implement PS2 protocol decoding and remote-control policy as host-testable code.
-5. [x] Implement HAL GPIO bit-bang and reversible SWD/PS2 pin switching.
-6. [x] Integrate KEY1 long press, neutral arming, dead-man and stop behavior.
-7. [x] Run host tests, CubeMX generation and AC5 build.
-8. [x] Update documentation and task report with final evidence.
+1. [x] 将香橙派工程整理为 `target/rk3588-goalkeeper/` 并排除模型、视频、wheel、IDE/cache 和旧 Agent 元数据。
+2. [ ] 选定 UART7_M2 `/dev/ttyS7` 与 C5 USART2；实物改确认为 Orange Pi 5 Pro，40-pin 待按 5 Pro 手册复核。
+3. [x] 实现固定 11 字节 CRC-8/ATM 命令/状态协议和 C/Python 黄金帧。
+4. [x] 实现 STM32 USART2 中断接收、事件队列、ARM/超时和 HOST/PS2 仲裁。
+5. [x] 实现 Orange Pi MotionLink、端口锁、默认 QUERY 的限幅 CLI 和只读 doctor。
+6. [x] 从 `StateManager` 移除旧足球 x 坐标串口职责；`main.py` 只显示链路状态并在退出时 STOP。
+7. [x] 保存并隔离本地 Keil schema 2.1 工作副本，CubeMX 生成后确定性同步 App 源码。
+8. [x] 更新协议、接线、调通、验收和未决文档。
+9. [x] 完成主机测试、CubeMX、AC5 和完整 `verify.ps1` 最终复验。
+10. [ ] SSH/UART/烧录和架空实测；须另获授权。
+11. [x] SSH 确认 5 Pro/Ubuntu 22.04.5，并备份远端最新视觉源码和 7 个 RKNN 模型；哈希一致。
+12. [x] 合入远端 `model_26.7.25_i8.rknn`、6 worker、NMS 0.2，同时保留新 MotionLink，未恢复 `/dev/ttyS0` 旧协议。
 
-## Required behavior
+## 固定行为
 
-- Reset starts with SWD available and sends the existing broadcast stop.
-- A 2-second KEY1 hold stops first, releases SWD and enters PS2 mode.
-- Valid neutral frames arm the remote; L1 or R1 is the dead-man control.
-- Left X/Y and right X map to `vy/vx/wz` through `C5_Motion` only.
-- Invalid/lost frames, dead-man release, KEY1 press and mode exit stop motion.
-- A second long press releases the PS2 pins and restores SWD.
+- 命令：ARM、TWIST、STOP、QUERY；三轴小端 `int16_t`，范围 `[-1000,1000]`。
+- 上位机 20 Hz 刷新；动作保持 150 ms，HOST 200 ms 未刷新则停车并解除 ARM。
+- 上电 HOST 未解锁；ARM 成功回报后才接受非零 TWIST；零 TWIST 停车但保持 ARM。
+- KEY1 长按先停车并解除 HOST，再进入 PS2；退出 PS2 后必须重新 ARM。
+- PS2 拒绝 ARM/TWIST；QUERY 可用；STOP 在任何模式停车并解除控制状态。
+- 坏帧、UART 错误、队列溢出、运动故障和超时均停车。
 
-## Constraints
+## 实物边界
 
-- KEY1 pull-up/active-low is an explicit software assumption pending measurement.
-- Disconnect an active ST-LINK before PS2 mode because PA13/PA14 become outputs.
-- Reset and connect-under-reset remain recovery routes.
-- No automatic flash, serial-port access or motor command is part of verification.
+SSH 与板型只读检查已完成。先复核 5 Pro 40-pin、启用 UART7 并做回环，再与
+STM32 做 QUERY/ARM/STOP。经明确授权后才烧录，并仅架空、低速、限时验证
+三轴、STOP、断联停车和模式互斥；不落地自动行驶。
 
-## Verification result
-
-- `tools/test-host.ps1`: exit 0 under MSVC `/W4 /WX`.
-- `tools/generate.ps1`: exit 0; eight App sources synchronized.
-- `tools/build.ps1 -Rebuild`: exit 0; AC5.06u7, 0 errors, 0 warnings.
-- `tools/verify.ps1`: exit 0 across doctor, tests, generation and build.
-- Program size: Code 5448, RO-data 296, RW-data 36, ZI-data 1940 bytes.
-- The automated verification did not flash hardware, open a serial port or drive motors.
-
-## Hardware acceptance result
-
-- The current image was flashed through the core-board SWD header and booted normally.
-- Active-low KEY1 entry/exit and PB13 off/blinking/solid indication matched the design.
-- The supplied 6-pin receiver link works after the controller is switched to analog mode.
-- Raised-chassis and whole-vehicle tests produced correct forward/reverse, strafe and yaw directions.
-- Cells at about 2.3-2.5 V each powered indicators but not motors; charging restored motion.
-- Turning off the wireless controller does not invalidate receiver frames, so radio-loss safety remains unresolved.
-
-## Next vertical task
-
-Add a bounded USART2 host-motion protocol with explicit ownership, command
-ranges and an independent stop deadline. Preserve PS2 safety behavior and keep
-the wireless-controller loss issue visible until raw receiver frames are captured.
+下一任务才基于检测框、置信度、时间戳和 IMU 姿态实现相机投影、场地定位、球位置、拦截和守门区保持。

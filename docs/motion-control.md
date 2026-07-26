@@ -3,8 +3,8 @@
 ## 状态
 
 HAL 运动层已完成软件验证并烧录。架空及整车测试确认四轮可驱动，前后、横移和旋转方向正确；
-尚未逐轮核对 ID、量化最低可靠速度或完成断联停车验收。上电只发送广播停车，
-不自动运动，也未启用上位机命令解析。
+尚未逐轮核对 ID、量化最低可靠速度或完成断联停车验收。上电只发送广播停车。
+USART2 HOST 命令、显式 ARM、200 ms 看门狗和 PS2 仲裁已完成软件验证，尚未烧录实测。
 
 ## 商家行为证据
 
@@ -54,7 +54,7 @@ LR = vx - vy + wz
 RR = vx + vy - wz
 ```
 
-超限时四轮同比缩放。`c5_motion_config.h` 集中保存轮 ID、极性、输出上限、保持时间、UART 超时和停车重试参数。当前输出上限 700，协议硬上限 1000。
+超限时四轮同比缩放。`c5_motion_config.h` 集中保存轮 ID、极性、输出上限、保持时间、UART 超时和停车重试参数。当前输出上限已放开至协议硬上限 1000，实车速度和温升待复测。
 
 ## 软件分层
 
@@ -64,10 +64,14 @@ RR = vx + vy - wz
 | `c5_mecanum` | `vx/vy/wz` → LF/RF/LR/RR，并归一化 |
 | `c5_motion` | 运动 API、限时停车、故障锁存 |
 | `c5_motor_bus_hal` | USART3 阻塞式 `HAL_UART_Transmit()` 适配 |
+| `c5_host_protocol` | USART2 固定短帧解析和状态编码 |
+| `c5_host_control` | HOST 解锁、150 ms 动作保持和 200 ms 断联停车 |
+| `c5_host_uart_hal` | 逐字节中断接收与事件队列；ISR 不驱动电机 |
 
 非零动作必须带 1–1000 ms 保持时间并持续刷新。超时广播停车；发送失败进入 `C5_MOTION_FAULT`，立即尝试停车，失败后每 100 ms 重试。只有 `C5_Motion_ClearFault()` 成功停车后才允许新动作。
 
-PS2 层只调用 `C5_Motion_CommandTwist()` 和 `C5_Motion_Stop()`，不直接写总线帧。
+PS2 和 HOST 均只经 `C5_Control` 调用运动层，不直接写总线帧；两者互斥。协议详见
+[香橙派 HOST 运动链路](host-link.md)。
 
 ## 软件验证
 
