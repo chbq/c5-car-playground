@@ -612,3 +612,24 @@ with the Phase 5D telemetry fields. It remained dry and unarmed throughout.
 The final QUERY returned `HOST/DISARMED/STOPPED/errors=0`. Physical edge,
 prediction and reacquisition behavior remains unverified; no motor command or
 firmware operation was performed.
+
+## Phase 5D physical attempt and Phase 6 handoff
+
+Date: 2026-08-01
+
+After explicit authorization, one 30-second `ball-fov-test --execute` session
+completed its normal deadline and final STOP. Its final QUERY was
+`HOST/DISARMED/STOPPED/errors=0`. The 511-row CSV contained 26 prediction-only
+rows with zero translation; no-target and low-confidence rows also sent zero.
+Control intervals averaged 58.6 ms, with 87.0 ms P95 and 107.9 ms maximum; no
+interval crossed the STM32 200 ms watchdog.
+
+The battery was confirmed depleted immediately afterward, so this run is not
+accepted as evidence of physical edge recovery, prediction or reacquisition.
+Phase 5D remains software/board validated and physically pending. No further
+motion or firmware operation was performed.
+
+Added `docs/handoff-phase6.md` and `prompts/phase6-kickoff.md` as the curated
+cross-user handoff. Raw Codex sessions, credentials, machine-local paths,
+build outputs and logs are deliberately excluded; Git plus the separately
+checksummed workspace overlay is the recovery source.

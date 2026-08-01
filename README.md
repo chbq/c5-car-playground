@@ -57,8 +57,10 @@ Set-ExecutionPolicy -Scope Process Bypass
 - 阶段 5A：球心像素转向（15 秒与 30 秒下地测试通过）
 - 阶段 5B：球心像素横移（修正方向后，30 秒下地闭环通过）
 - 阶段 5C：侧置相机球控（三轴、CSV 和 30 秒实车通过）
-- 阶段 5D：窄视角视野保护（本机/板端 65 项测试和 dry-run 通过，实车待验）
+- 阶段 5D：窄视角视野保护（本机/板端 65 项测试和 dry-run 通过；亏电尝试无效，实车待验）
 - 阶段 6：相机/场地定位、自动拦截和守门区保持（已设计，待新任务实施）
 
 详细入口见 [`docs/README.md`](docs/README.md)，当前任务见
 [`tasks/current.md`](tasks/current.md)。
+跨用户恢复见 [`docs/handoff-phase6.md`](docs/handoff-phase6.md)，新任务首条提示词见
+[`prompts/phase6-kickoff.md`](prompts/phase6-kickoff.md)。

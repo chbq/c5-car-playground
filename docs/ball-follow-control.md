@@ -64,7 +64,7 @@ python3 main.py --headless --mode ball-follow-test --execute
 
 ## Phase 5D：窄视角保护
 
-状态：本机/板端 65 项测试和 dry-run 通过，实车待验。
+状态：本机/板端 65 项测试和 dry-run 通过；一次实车尝试因电池亏电无效，仍待验。
 
 Phase 5C 已同时生成平移和转向，但三轴共用误差并同比分配预算，不会主动保证球留在
 较窄视野内。Phase 5D 新增独立 `ball-fov-test`，不改变 5C 默认行为，也不依赖球门
@@ -102,5 +102,9 @@ python3 main.py --headless --mode ball-fov-test --execute
 全程未 ARM，最终 QUERY 为 `HOST/DISARMED/STOPPED/errors=0`。
 
 默认阈值仍需通过带球 CSV/录像确认，再做限时实车验收。
+2026-08-01 的一次 30 秒动作尝试正常到时 STOP，最终 QUERY 为
+`HOST/DISARMED/STOPPED/errors=0`。CSV 共 511 周期，平均/P95/最大控制间隔为
+58.6/87.0/107.9 ms；26 个预测周期均为零平移，无目标和低置信度周期均为零速。
+但随后确认电池亏电，本轮不作为边缘回中、预测和重捕获的实车行为验收。
 该模式解决视野保持，不承担球场定位或正式守门决策；后续见
 [goalkeeper-behavior.md](goalkeeper-behavior.md)。
