@@ -50,6 +50,79 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(constants["NMS_THRESH"], 0.2)
         self.assertEqual(constants["IMG_SIZE"], 640)
 
+    def test_ground_profiles_are_repeatable_and_bounded(self):
+        profiles = read_constants(PROJECT / "main.py")["BALL_PROFILES"]
+        self.assertEqual(
+            profiles["ground-check"],
+            {
+                "duration": 15.0,
+                "min_wz": 60,
+                "max_wz": 120,
+                "kp": 150.0,
+                "deadband": 0.12,
+                "min_confidence": 0.35,
+                "lost_timeout": 1.5,
+                "hold_arm_until_duration": True,
+            },
+        )
+        self.assertEqual(
+            profiles["ground-demo"],
+            {
+                "duration": 30.0,
+                "min_wz": 70,
+                "max_wz": 160,
+                "kp": 200.0,
+                "deadband": 0.12,
+                "min_confidence": 0.35,
+                "lost_timeout": 1.5,
+                "hold_arm_until_duration": True,
+            },
+        )
+
+    def test_ball_strafe_defaults_are_aggressive_and_bounded(self):
+        defaults = read_constants(PROJECT / "main.py")["BALL_STRAFE_DEFAULTS"]
+        self.assertEqual(
+            defaults,
+            {
+                "duration": 30.0,
+                "min_vy": 250,
+                "max_vy": 800,
+                "lateral_kp": 1000.0,
+                "lateral_deadband": 0.10,
+                "max_vy_step": 120,
+                "lateral_sign": -1,
+                "min_confidence": 0.35,
+                "lost_timeout": 1.5,
+                "hold_arm_until_duration": True,
+            },
+        )
+
+    def test_ball_follow_defaults_define_camera_axes(self):
+        defaults = read_constants(PROJECT / "main.py")["BALL_FOLLOW_DEFAULTS"]
+        self.assertEqual(defaults["max_vx"], 800)
+        self.assertEqual(defaults["max_vy"], 600)
+        self.assertEqual(defaults["max_wz"], 180)
+        self.assertEqual(defaults["vx_kp"], 1000.0)
+        self.assertEqual(defaults["vx_sign"], -1)
+        self.assertEqual(defaults["distance_kp"], 4000.0)
+        self.assertEqual(defaults["distance_deadband"], 0.05)
+        self.assertEqual(defaults["target_box_ratio"], 0.35)
+        self.assertEqual(defaults["vy_sign"], 1)
+        self.assertEqual(defaults["yaw_sign"], 1)
+        self.assertTrue(defaults["hold_arm_until_duration"])
+
+    def test_ball_fov_defaults_prioritize_bounded_yaw(self):
+        defaults = read_constants(PROJECT / "main.py")["BALL_FOV_DEFAULTS"]
+        self.assertEqual(defaults["max_wz"], 260)
+        self.assertEqual(defaults["kp"], 320.0)
+        self.assertEqual(defaults["fov_edge_enter"], 0.55)
+        self.assertEqual(defaults["fov_edge_exit"], 0.30)
+        self.assertEqual(defaults["fov_prediction_horizon"], 0.15)
+        self.assertEqual(defaults["fov_predict_hold"], 0.15)
+        self.assertEqual(defaults["fov_translation_scale"], 0.25)
+        self.assertLessEqual(defaults["fov_predict_hold"], 0.2)
+        self.assertTrue(defaults["hold_arm_until_duration"])
+
 
 if __name__ == "__main__":
     unittest.main()

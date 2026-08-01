@@ -17,11 +17,12 @@ import threading
 import time
 from collections import namedtuple
 
-from func import get_football as _extract_football
+from func import get_football_box as _extract_football_box
 
-# 一次检测结果: x/y 为足球中心像素坐标, conf 为置信度,
+# 一次检测结果: x/y 为足球中心像素坐标, width/height 为检测框像素尺寸, conf 为置信度,
 # ts 为写入时间(time.monotonic(), 单调时钟, 只用于计算数据年龄, 不是墙钟时间)
-FootballInfo = namedtuple("FootballInfo", ["x", "y", "conf", "ts"])
+FootballInfo = namedtuple(
+    "FootballInfo", ["x", "y", "width", "height", "conf", "ts"])
 
 # 数据默认有效期（秒）: 超过该时长未更新视为过期，返回 None。
 # 推理帧率 ≥ 30fps 时，0.5s 相当于连续约 15 帧没有新数据。
@@ -40,17 +41,21 @@ class FootballTracker:
         返回 (x, y, conf) 或 None，方便主循环直接用于画面标注/串口发送。
         本帧没有足球时清空缓存（此后 get 立即返回 None）。
         """
-        football = _extract_football(boxes, classes, scores)
+        detection = _extract_football_box(boxes, classes, scores)
         with self._lock:
-            if football is None:
+            if detection is None:
                 self._info = None
             else:
-                x, y, conf = football
-                self._info = FootballInfo(x, y, conf, time.monotonic())
-        return football
+                x, y, width, height, conf = detection
+                self._info = FootballInfo(
+                    x, y, width, height, conf, time.monotonic())
+        if detection is None:
+            return None
+        # Preserve the original main-loop return value.
+        return detection[0], detection[1], detection[4]
 
     def get(self, max_age=DEFAULT_MAX_AGE):
-        """返回最新 FootballInfo(x, y, conf, ts)；无球或数据过期返回 None。
+        """返回最新 FootballInfo（含中心、框尺寸和置信度）；无球或过期返回 None。
         max_age=None 表示不做过期检查。
         """
         with self._lock:
@@ -82,5 +87,5 @@ def get_football_x(max_age=DEFAULT_MAX_AGE):
 
 
 def get_football_info(max_age=DEFAULT_MAX_AGE):
-    """获取最新足球信息 FootballInfo(x, y, conf, ts)；无球或过期返回 None。"""
+    """获取含中心、框尺寸和置信度的足球信息；无球或过期返回 None。"""
     return tracker.get(max_age)

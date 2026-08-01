@@ -47,6 +47,19 @@ def service_is_active(name):
     return result.returncode == 0
 
 
+def service_enablement(name):
+    try:
+        result = subprocess.run(
+            ("systemctl", "is-enabled", name),
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        return "unknown"
+    return result.stdout.strip() or "unknown"
+
+
 def main():
     print(f"system: {platform.platform()}")
     print(f"machine: {platform.machine()}")
@@ -74,10 +87,15 @@ def main():
         print(f"serial: {serial_port} {mark(serial_port.exists())}")
         print(f"serial read/write: {os.access(serial_port, os.R_OK | os.W_OK)}")
     brltty_active = service_is_active("brltty-udev.service")
-    print(
-        "brltty-udev: "
-        + ("ACTIVE (can claim CH340)" if brltty_active else "inactive")
-    )
+    brltty_enablement = service_enablement("brltty-udev.service")
+    if brltty_active:
+        brltty_status = f"{brltty_enablement}/ACTIVE (can claim CH340)"
+    elif brltty_enablement == "masked":
+        brltty_status = "masked/inactive"
+    else:
+        brltty_status = (
+            f"{brltty_enablement}/inactive (may claim CH340 after reboot)")
+    print(f"brltty-udev: {brltty_status}")
     for name in MODULES:
         print(f"module {name}: {mark(importlib.util.find_spec(name) is not None)}")
     models = sorted(Path(__file__).parent.joinpath("rknnModel").glob("*.rknn"))

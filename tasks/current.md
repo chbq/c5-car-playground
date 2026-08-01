@@ -1,44 +1,39 @@
-# 当前任务：Phase 4 香橙派到 C5 的运动链路
+# 当前任务：Phase 5D 窄视角保护
 
-状态：实现、软件验证和 CH340 架空运动验收通过；环境收尾与模式互斥待补
+状态：本机/板端软件验证和 dry-run 完成，实车待验
 
 ## 目标
 
-打通“香橙派发送 `vx/vy/wz`，STM32 安全执行并逐帧回报状态”的完整链路；本任务不实现自动守门算法，不自动烧录或动车。
+在不依赖球门和球场定位的前提下，降低窄视角相机的丢球概率。球接近画面边缘时优先
+转向并降低平移；单帧/短时漏检只允许有界预测转向，随后归零等待重捕获。
 
 ## 工作项
 
-1. [x] 将香橙派工程整理为 `target/rk3588-goalkeeper/` 并排除模型、视频、wheel、IDE/cache 和旧 Agent 元数据。
-2. [x] 默认物理链路改为 Orange Pi USB → 核心板 CH340 → C5 USART1；USART2 保留扩展。
-3. [x] 实现固定 11 字节 CRC-8/ATM 命令/状态协议和 C/Python 黄金帧。
-4. [x] 实现 STM32 HOST UART 中断接收、事件队列、ARM/超时和 HOST/PS2 仲裁。
-5. [x] 实现 Orange Pi MotionLink、端口锁、默认 QUERY 的限幅 CLI 和只读 doctor。
-6. [x] 从 `StateManager` 移除旧足球 x 坐标串口职责；`main.py` 只显示链路状态并在退出时 STOP。
-7. [x] 保存并隔离本地 Keil schema 2.1 工作副本，CubeMX 生成后确定性同步 App 源码。
-8. [x] 更新协议、接线、调通、验收和未决文档。
-9. [x] 完成主机测试、CubeMX、AC5 和完整 `verify.ps1` 最终复验。
-10. [x] 完成 SSH、USART1/CH340、烧录和架空低速三轴/斜移实测。
-11. [x] SSH 确认 5 Pro/Ubuntu 22.04.5，并备份远端最新视觉源码和 7 个 RKNN 模型；哈希一致。
-12. [x] 合入远端 `model_26.7.25_i8.rknn`、6 worker、NMS 0.2，同时保留新 MotionLink，未恢复 `/dev/ttyS0` 旧协议。
-13. [x] 提交 `ac9322a` 并暂存部署到香橙派 `~/Desktop/c5-goalkeeper-staging-ac9322a/`；复用原模型目录，板端 10 个测试通过，未启动服务。
-14. [x] 将固件 HOST 绑定迁移至 USART1；香橙派增加 CH340 自动发现、稳定端口优先和打开前 DTR/RTS 撤销。
-15. [x] CH340 枚举、权限、20 次重复开关、QUERY/STOP、零速 ARM/TWIST、超时和坏 CRC 恢复通过。
-16. [x] 架空三轴、两组 45°斜移和发送进程强杀后的自动停车通过。
-17. [ ] 永久处理 `brltty-udev` 抢占并重启复验；HOST/PS2 互斥仍待补。
+1. [x] 新增独立 `ball-fov-test`，不改变 Phase 5C 默认控制。
+2. [x] 水平误差与误差速度滤波，预测 150 ms 后画面位置。
+3. [x] 中央、跟踪、边缘三区及 0.55/0.30 进入退出滞回。
+4. [x] 边缘区平移降至 25%，先保留 `wz` 再分配剩余三轴预算。
+5. [x] 最近可靠观测最多支持 150 ms 的零平移预测转向。
+6. [x] 预测不会首次 ARM；重捕获后连续三周期才恢复三轴。
+7. [x] CSV 增加滤波/预测误差、误差速度、区域、年龄和丢帧数。
+8. [x] 本机完整 RK 65 项测试和 `compileall` 通过。
+9. [x] 部署独立 staging，完成板端 65 项测试、CLI 和 5 秒 dry-run。
+10. [ ] 明确授权后完成限时实车验收。
 
-## 固定行为
+## 默认参数
 
-- 命令：ARM、TWIST、STOP、QUERY；三轴小端 `int16_t`，范围 `[-1000,1000]`。
-- 上位机 20 Hz 刷新；动作保持 150 ms，HOST 200 ms 未刷新则停车并解除 ARM。
-- 上电 HOST 未解锁；ARM 成功回报后才接受非零 TWIST；零 TWIST 停车但保持 ARM。
-- KEY1 长按先停车并解除 HOST，再进入 PS2；退出 PS2 后必须重新 ARM。
-- PS2 拒绝 ARM/TWIST；QUERY 可用；STOP 在任何模式停车并解除控制状态。
-- 坏帧、UART 错误、队列溢出、运动故障和超时均停车。
+- `error_alpha=0.55`，`rate_alpha=0.35`；
+- `prediction_horizon=0.15 s`，`predict_hold=0.15 s`；
+- `edge_enter=0.55`，`edge_exit=0.30`；
+- 边缘区平移比例 0.25；
+- `wz=60..260，Kp=320`；
+- 默认 30 秒、dry-run、丢球不提前结束会话。
 
-## 实物边界
+板端 staging 为 `c5-goalkeeper-staging-phase5d-fov-20260801`。dry-run 约 56 FPS，
+写入 58 行 CSV，全程未 ARM；最终 QUERY 为
+`HOST/DISARMED/STOPPED/errors=0`。
 
-CH340 稳定路径、权限、DTR/RTS 重复开关、非运动协议、架空三轴/斜移和进程强杀
-停车均已通过，固件由用户烧录。`brltty-udev` 当前仅临时停止，重启会再次抢占；
-须永久处理并复验。USB 物理拔线和 HOST/PS2 互斥仍待补。
+## 后续边界
 
-下一任务才基于检测框、置信度、时间戳和 IMU 姿态实现相机投影、场地定位、球位置、拦截和守门区保持。
+Phase 5D 只保护相机视野，不承担球门识别、球场定位或守门决策。完整守门行为见
+[`docs/goalkeeper-behavior.md`](../docs/goalkeeper-behavior.md)，后续在新任务实施。

@@ -16,6 +16,10 @@
 | [motion-control.md](motion-control.md) | 电机协议、麦轮运动和安全策略 |
 | [ps2-control.md](ps2-control.md) | PS2、SWD 复用和遥控策略 |
 | [host-link.md](host-link.md) | 香橙派 USB/CH340 协议、控制权和验收顺序 |
+| [ball-yaw-control.md](ball-yaw-control.md) | 球心像素到低速转向的 Phase 5A 闭环 |
+| [ball-strafe-control.md](ball-strafe-control.md) | 球心像素到麦轮横移的 Phase 5B 闭环 |
+| [ball-follow-control.md](ball-follow-control.md) | 右侧相机三轴球控与 CSV Phase 5C |
+| [goalkeeper-behavior.md](goalkeeper-behavior.md) | Phase 5D 视野保护边界与 Phase 6 自动守门设计 |
 
 ## 当前基线
 
@@ -28,7 +32,10 @@
 - 时钟：8 MHz HSE，PLL ×9 至 72 MHz。
 - 当前镜像已烧录；PS2 模拟模式、KEY1 切换、架空和整车麦轮三轴运动已实测。
 - 手柄关机后接收器仍返回合法帧，无线失联停车尚未闭环。
-- HOST 固定帧、显式 ARM、200 ms 看门狗和 PS2 互斥已完成软件验证，实物串口验收待做。
+- HOST 固定帧、显式 ARM、200 ms 看门狗和架空三轴/斜移已实测。
+- 球心转向、单轴横移和侧置相机三轴球控均已通过实车。
+- Phase 5D 窄视角保护已通过本机/板端测试和 dry-run，实车待验。
+- 当前模型代码含球门类别，但当前测试场地无球门框，尚未实场验证球门识别。
 
 ## 证据等级
 

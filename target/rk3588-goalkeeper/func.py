@@ -209,10 +209,8 @@ def letterbox(im, new_shape=(640, 640), color=(0, 0, 0)):
     #return im
     return im, ratio, (left, top)
 
-def _get_best_detection(boxes, classes, scores, class_id):
-    """从检测结果中提取指定类别置信度最高的目标。
-    返回: (x_center, y_center, score) 或 None
-    """
+def _get_best_detection_box(boxes, classes, scores, class_id):
+    """提取指定类别置信度最高的目标及其检测框尺寸。"""
     if boxes is None or len(classes) == 0:
         return None
 
@@ -223,14 +221,31 @@ def _get_best_detection(boxes, classes, scores, class_id):
             # box: [left, top, right, bottom]
             x_center = int((box[0] + box[2]) / 2)
             y_center = int((box[1] + box[3]) / 2)
-            best = (x_center, y_center, float(score))
+            width = max(0, int(round(box[2] - box[0])))
+            height = max(0, int(round(box[3] - box[1])))
+            best = (x_center, y_center, width, height, float(score))
             best_score = score
     return best
+
+
+def _get_best_detection(boxes, classes, scores, class_id):
+    """提取指定类别置信度最高目标的中心和置信度。"""
+    detection = _get_best_detection_box(boxes, classes, scores, class_id)
+    if detection is None:
+        return None
+    x_center, y_center, _, _, score = detection
+    return x_center, y_center, score
 
 
 def get_football(boxes, classes, scores):
     """从检测结果中提取置信度最高的足球。"""
     return _get_best_detection(boxes, classes, scores, FOOTBALL_CLASS_ID)
+
+
+def get_football_box(boxes, classes, scores):
+    """返回足球中心、检测框宽高和置信度。"""
+    return _get_best_detection_box(
+        boxes, classes, scores, FOOTBALL_CLASS_ID)
 
 
 def get_goal(boxes, classes, scores):

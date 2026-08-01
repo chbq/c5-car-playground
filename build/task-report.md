@@ -364,3 +364,251 @@ STM32 QUERY/ARM/STOP and raised-chassis motion tests remain hardware work.
 
 Persistent `brltty-udev` handling, reboot verification, physical USB unplug
 and HOST/PS2 arbitration remain open. No ground-driving test was performed.
+
+## Phase 5A ball-pixel yaw loop
+
+Date: 2026-07-26
+
+- Added a pure Python pixel controller with confidence gating, center deadband,
+  bounded proportional yaw, slew limiting and zero-crossing direction changes.
+- Added a 20 Hz session that requires three consecutive valid targets before
+  ARM, sends zero immediately on target loss, requires confirmation after
+  reacquisition and stops/disarms after 0.5 seconds without a target.
+- Refactored `main.py` for explicit `idle`, `inference` and
+  `ball-yaw-test` modes. The test defaults to dry-run; only `--execute` can
+  ARM, and its duration is capped at 30 seconds.
+- Deployed to the isolated directory
+  `/home/orangepi/Desktop/c5-goalkeeper-staging-phase5a-20260726/`; the visual
+  baseline and earlier staging directories were not overwritten.
+- Masked `brltty-udev.service` without uninstalling the package. After reboot,
+  it remained masked/inactive and CH340 attached normally as `ttyUSB0`.
+- Board doctor and QUERY passed after reboot. A 3-second headless dry-run
+  opened the 1280x720@120 camera, ran six RKNN workers at about 56 FPS and
+  reported `NO_TARGET`, `wz=0`, `armed=False`; the post-run status was
+  `HOST/DISARMED/STOPPED/errors=0`.
+
+| Command | Result |
+|---|---|
+| `tools/test-rk-host.ps1` | Exit 0; 28 tests and `compileall` passed |
+| `tools/verify.ps1` | Exit 0; doctor, C/Python tests, CubeMX and AC5 passed |
+| AC5 build | 0 errors, 0 warnings; Code 8340, RO 296, RW 36, ZI 2020 |
+| board unit tests and `compileall` | Exit 0; 28 tests passed |
+| rebooted board doctor and QUERY | CH340 OK; DISARMED/STOPPED/errors=0 |
+| `main.py --headless --mode ball-yaw-test --duration 3` | Exit 0; dry-run only |
+
+Firmware image:
+`target/c5-firmware/MDK-ARM/c5-firmware/c5-firmware.hex`.
+
+The initial deployment and dry-run did not flash firmware, ARM or move a
+motor. Subsequent raised-chassis tests were explicitly authorized:
+
+- Ball-present dry-run confirmed negative/zero/positive yaw across the image.
+- Initial motion attempts exposed a discharged 4 V motor pack; charging
+  restored motion.
+- Intermittent detections exposed premature target-loss exit. An explicit
+  bounded raised-test mode now keeps ARM until the total duration, sends zero
+  during target loss and requires three valid cycles before resuming motion.
+- A real watchdog regression was found when paused zero commands stopped
+  refreshing. The firmware correctly disarmed after 200 ms; the application
+  then reported `HOST is not armed`. Continuous 20 Hz zero refresh and a
+  regression test fixed it.
+- Two final 30-second tests completed without early exit. Actual sent yaw
+  covered positive, zero and negative values; target loss held
+  `armed=True/sent=0`, detection recovery resumed motion, and only duration
+  expiry issued STOP.
+- Final QUERY returned `HOST/DISARMED/STOPPED/errors=0`; the user confirmed
+  correct right turn, center stop, left turn and recovery after target loss.
+- The final full-verify retry stalled inside CubeMX after its third-party
+  package integrity scan and produced no completion markers. The launched
+  `javaw` process was stopped after several minutes; `target/c5-firmware/`
+  had no Git drift. A direct AC5 rebuild and
+  `verify.ps1 -SkipGenerate` then passed with 0 errors and 0 warnings. The
+  earlier Phase 5A full verify, including CubeMX generation, had already
+  passed; no STM32 source or `.ioc` changed afterward.
+
+No firmware was reflashed and no ground-driving test was performed.
+HOST/PS2 arbitration and an explicit Ctrl+C stop test remain open.
+
+### Ground-test presets
+
+- Added repeatable `ground-check` and `ground-demo` profiles. They bound
+  duration, yaw output, gain, deadband, confidence and target-loss handling.
+- Profiles do not imply `--execute`; the same profile can first run dry.
+  Holding ARM across target loss is enabled only with explicit execution.
+- Local and board-side suites passed 29 tests. Board-side `main.py --help`
+  passed under the actual `yolov8` Conda environment and exposed both
+  profiles plus the separate `--execute` gate.
+- No serial command, firmware flash or ground motion was performed while
+  adding or verifying the profiles.
+
+On 2026-08-01, after the motor battery was recharged, the user explicitly
+authorized and confirmed both the 15-second `ground-check` and a complete
+30-second `ground-demo` on the ground. The second demo covered positive and
+negative yaw, center stop, target loss and reacquisition, exited normally at
+the duration limit, and ended at `HOST/DISARMED/STOPPED/errors=0`.
+
+## Phase 5B ball-pixel lateral loop
+
+Date: 2026-08-01
+
+- Added `BallStrafeController` with normalized horizontal error, confidence
+  gating, a 0.10 deadband, `vy=250..800`, gain 1000, 120-unit slew limit and
+  zero-crossing direction reversal.
+- Added `BallStrafeSession` at 20 Hz. It requires three valid cycles before
+  ARM and sends only `vx=0, vy, wz=0`; target loss immediately sends zero and
+  explicit execution holds zero until the bounded 30-second session ends.
+- Added `ball-strafe-test` to `main.py`. It remains dry-run unless the separate
+  `--execute` gate is present. No STM32 source or protocol change is required.
+- Local and board-side RK host tests and `compileall` passed 39 tests. The
+  user explicitly allowed the first physical run without a separate dry-run.
+
+The first explicitly authorized 30-second physical run completed and ended at
+`HOST/DISARMED/STOPPED/errors=0`, but the user observed that the car moved away
+from the ball. The C5 default was therefore corrected from
+`lateral_sign=+1` to `-1`; physical acceptance remains pending a rerun.
+
+The corrected 30-second rerun completed normally. Sent lateral output covered
+approximately `vy=-720..+528`; center, missing and low-confidence detections
+sent zero. The final QUERY returned `HOST/DISARMED/STOPPED/errors=0`. The user
+confirmed that the vehicle translated toward the ball and did not turn its
+heading, which is expected because Phase 5B fixes `wz=0`. Phase 5B physical
+acceptance passed.
+
+## Phase 5C combined ball-follow loop
+
+Date: 2026-08-01
+
+- Added `BallFollowController` and `BallFollowSession` to combine the verified
+  C5 lateral sign with the verified yaw sign while fixing `vx=0`.
+- Defaults are `vy=250..800` and `wz=40..180`; their maximum sum is 980, so
+  the STM32 mecanum mixer does not normalize the command.
+- Added the dry-by-default `ball-follow-test` mode with the same 20 Hz,
+  three-cycle acquire, target-loss zero refresh, bounded duration and global
+  STOP behavior.
+- Local RK host tests and `compileall` passed 49 tests. Board and physical
+  combined-motion acceptance remain pending.
+
+Board-side 49 tests, `compileall`, CLI help and a 5-second dry-run passed. An
+explicitly authorized 30-second physical test completed and ended at
+`HOST/DISARMED/STOPPED/errors=0`, with approximately `vy=-720..+706` and
+`wz=-120..+141`. Safety behavior passed, but the user observed the car moving
+away from a ball on the right. The log showed yaw rapidly centering the ball
+in the image, which also removed the lateral command. One horizontal image
+error cannot independently determine heading and lateral position, so this
+combined controller failed behavioral acceptance and is not a keeper baseline.
+
+## Phase 5C revised ball-pursuit loop
+
+Date: 2026-08-01
+
+- Replaced the rejected `vy+wz` behavior with `vx+wz`; pursuit fixes `vy=0`.
+- Extended `FootballInfo` with bounding-box width and height while preserving
+  the original `(x, y, confidence)` return used by the display loop.
+- Horizontal image error drives yaw. Forward motion is gated off beyond 0.35
+  normalized error, decreases as box-height ratio grows from 0.20 to 0.45, and
+  stops immediately at the near threshold.
+- Defaults are `vx=250..800` and `wz=40..180`; the maximum sum remains 980.
+- Local Python tests passed 54 cases and `compileall` passed. No firmware was
+  changed or flashed, and no motor command was sent at this local checkpoint.
+
+The source-only 41 KB deployment was installed at
+`/home/orangepi/Desktop/c5-goalkeeper-staging-phase5c-pursuit-20260801` without
+overwriting the previous staging tree. Board-side 54 tests, `compileall`, CLI
+help and a 5-second dry-run passed. The dry-run observed a box-height ratio near
+0.25 and produced targets around `vx=+375,wz=-40`, while remaining
+`sent=(-)/armed=False`. A final QUERY returned
+`HOST/DISARMED/STOPPED/errors=0`. No motor command was sent; physical acceptance
+and distance-threshold calibration remain pending.
+
+After explicit authorization, a 30-second ground run completed at the normal
+deadline. Logs exercised turn-only `ALIGNING`, forward `APPROACHING`, near-stop
+`NEAR`, and target-loss zero refresh; the final QUERY returned
+`HOST/DISARMED/STOPPED/errors=0`. The user observed that yaw turned toward the
+ball, but the vehicle consistently translated toward the left. The pursuit
+mode always sent `vy=0`, so behavioral acceptance failed pending an isolated
+pure-`vx` ground test.
+
+The user then clarified the missing camera extrinsic: the camera is mounted on
+the vehicle's right side, and positive `vx` translates the camera toward image
+left. The positive-only `vx` design was therefore incorrect for image-space
+tracking. Phase 5C now maps image-left to positive `vx`, image-right to negative
+`vx`, center to zero, and keeps `vy=0`; yaw mapping is unchanged. Sign symmetry,
+center stop, zero-crossing reversal and session safety passed all 54 local tests
+and `compileall`. Board deployment and physical retest remain pending.
+
+The user further defined the camera-frame axes: `vx` is camera left/right and
+`vy` is camera forward/back. The controller now maps horizontal image error to
+signed `vx`, apparent-size error around a 0.35 box-height ratio to signed `vy`,
+and horizontal error to `wz`. It proportionally limits the three-axis absolute
+sum to 1000 before transport. A new full-rate CSV logger records detection box,
+confidence, image and distance errors, target/sent axes, session state and IMU
+attitude on every 20 Hz control tick. All 57 local tests and `compileall` pass;
+no motor command was sent.
+
+The source-only revision was deployed at
+`/home/orangepi/Desktop/c5-goalkeeper-staging-phase5c-camera-axes-20260801`.
+Board-side 57 tests, `compileall`, CLI help and a 5-second dry-run passed. The
+observed ball was inside both deadbands (`x_error` about -0.048, box ratio about
+0.311), so all target axes stayed zero. The dry-run produced a 60-line CSV with
+empty sent-axis fields and `armed=0`; final QUERY was
+`HOST/DISARMED/STOPPED/errors=0`. At this checkpoint, physical retest remained
+pending.
+
+After explicit authorization, the corrected camera-frame controller completed
+a 30-second ground test. The user confirmed that physical behavior was correct.
+The 514-row CSV covered negative/zero/positive sent values for all axes:
+`vx=108/266/138`, `vy=131/288/93`, and `wz=138/266/108`. Control intervals were
+50.0 ms minimum, 58.3 ms average, 88.6 ms p95 and 116.7 ms maximum; none crossed
+the 200 ms STM32 watchdog. All 21 no-target and 2 low-confidence rows sent zero.
+The session stopped at its deadline and final QUERY returned
+`HOST/DISARMED/STOPPED/errors=0`. Phase 5C physical acceptance passed.
+
+## Phase 5D and Phase 6 design checkpoint
+
+Date: 2026-08-01
+
+- Recorded Phase 5D as a narrow-field-of-view protection layer: yaw receives
+  priority near image edges, translation is reduced, filtered image velocity
+  supports bounded prediction, and hysteresis prevents mode chatter.
+- Target loss remains a zero-motion wait rather than terminating the session;
+  stale observations must not cause unbounded translation or search rotation.
+- Recorded the Phase 6 field-frame goalkeeper architecture, localization
+  inputs, threat/intercept state machine and staged acceptance path in
+  `docs/goalkeeper-behavior.md`.
+- The current model exposes a `goal` class, but the present test area has no
+  goal frame. Goal detection and own/opponent identification remain physically
+  unverified.
+- This checkpoint changes documentation only. No code, deployment, firmware,
+  flash or motor command was executed.
+
+## Phase 5D narrow-FOV protection implementation
+
+Date: 2026-08-01
+
+- Added the dry-by-default `ball-fov-test` mode without changing the accepted
+  Phase 5C `ball-follow-test` defaults.
+- Added filtered horizontal error/rate, 150 ms prediction, CENTER/TRACK/EDGE
+  zones and 0.55/0.30 hysteresis.
+- EDGE limits translation to 25% and reserves command budget for yaw first;
+  default yaw is 60..260 at gain 320.
+- A previously armed session may use a recent reliable observation for at
+  most 150 ms of yaw-only prediction. It never translates or first-arms from
+  predicted data, then returns to zero and requires three fresh detections.
+- CSV now records filtered/rate/predicted error, zone, target age, lost frames
+  and whether a command is prediction-only.
+- Full local RK validation passed 65 tests and `compileall`. No STM32 source,
+  firmware generation, build, flash, deployment or motor command was used at
+  this checkpoint.
+
+The source-only 47 KB archive was deployed to
+`/home/orangepi/Desktop/c5-goalkeeper-staging-phase5d-fov-20260801`; its local
+and remote SHA-256 matched. Board-side 65 tests, `compileall` and CLI help
+passed. An initial combined shell check timed out only because an unquoted
+`grep -E` pattern became a pipeline; the exact leftover shell/grep PIDs were
+inspected and terminated before continuing.
+
+A 5-second no-ball dry-run completed at about 56 FPS and wrote a 58-line CSV
+with the Phase 5D telemetry fields. It remained dry and unarmed throughout.
+The final QUERY returned `HOST/DISARMED/STOPPED/errors=0`. Physical edge,
+prediction and reacquisition behavior remains unverified; no motor command or
+firmware operation was performed.

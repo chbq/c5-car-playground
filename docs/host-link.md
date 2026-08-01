@@ -2,7 +2,9 @@
 
 ## 范围
 
-本阶段只打通“香橙派发送 `vx/vy/wz`，STM32 安全执行并回报状态”。`main.py` 不自动 ARM、不根据检测结果动车；自动守门另立任务。
+Phase 4 打通“香橙派发送 `vx/vy/wz`，STM32 安全执行并回报状态”。`main.py`
+默认 IDLE/INFERENCE 不自动 ARM；Phase 5A 仅在显式
+`--mode ball-yaw-test --execute` 下限时发送球心转向。自动守门另立任务。
 
 ## 物理链路
 
@@ -71,7 +73,8 @@ ARM=`01`、TWIST=`02`、STOP=`03`、QUERY=`04`。三轴为小端 `int16_t`，有
 
 SSH、CH340 枚举与稳定路径、USART1 双向通信均已实测。QUERY/STOP、零速
 ARM/TWIST、200 ms 自动解除 ARM、20 次重复开关和坏 CRC 恢复通过，错误响应后链路
-保持可用。系统自带 `brltty-udev` 曾抢占 CH340，临时停止后恢复；永久处理及重启复验
-仍待完成。架空 `vx/vy/wz=100`、`vx=50,vy=±50` 两组斜移和 STOP 均实测通过；
+保持可用。系统自带 `brltty-udev` 曾抢占 CH340；现已将该 unit mask，重启后保持
+`masked/inactive`，CH340 自动恢复为 `ttyUSB0`，doctor 和 QUERY 均通过。架空
+`vx/vy/wz=100`、`vx=50,vy=±50` 两组斜移和 STOP 均实测通过；
 发送进程运行 1.2 秒后被 `SIGKILL`，轮组可见自动停车，随后 QUERY 为
 `DISARMED/STOPPED/errors=0`。USB 物理拔线和 HOST/PS2 互斥尚未验收。
