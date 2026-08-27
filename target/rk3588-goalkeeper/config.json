@@ -1,0 +1,12 @@
+{
+  "football": {
+    "target_x": 640,
+    "length_side": 100,
+    "area_near": 8000,
+    "area_far": 1500
+  },
+  "goal": {
+    "target_x": 640,
+    "target_top_width": 150.0
+  }
+}

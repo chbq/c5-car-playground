@@ -38,14 +38,16 @@ STOP，最终 QUERY 为 `HOST/DISARMED/STOPPED/errors=0`；CSV 共 511 周期，
 
 ## Orange Pi 最后已知状态
 
-以下为 2026-08-01 的最后观察，交接后必须重新检查，不能当作当前在线事实：
+以下为 2026-08-26 的只读观察；网络、设备和服务状态仍须在每次操作前重查：
 
 - SSH：`orangepi@192.168.137.168`；使用接收方自己的 SSH 密钥，不交接私钥。
 - Python：`/home/orangepi/miniconda3/envs/yolov8/bin/python3`。
-- Phase 5D staging：
-  `/home/orangepi/Desktop/c5-goalkeeper-staging-phase5d-fov-20260801`。
-- 默认模型：`rknnModel/model_26.7.25_i8.rknn`，6 个推理 worker，
+- 最新源码目录：
+  `/home/orangepi/Desktop/c5-goalkeeper-autostart-speed2x-20260823`；本轮只读归档后未修改板端。
+- 默认模型：`rknnModel/football_8_16_100.rknn`，6 个推理 worker，
   `NMS_THRESH=0.2`。
+- 守门员 service 当时为 `inactive/disabled`，未发现运动进程或 CH340 设备节点；这些
+  只代表该次检查时刻。
 - 当前测试场地没有球门框；模型代码包含 `goal` 类，但球门识别、己方/对方区分和
   球门位姿均未在正式场地验证。
 

@@ -1,6 +1,8 @@
 import argparse
 import os
+import signal
 import time
+import traceback
 
 import cv2
 
@@ -22,6 +24,7 @@ from ball_strafe_control import (
 )
 from football_tracker import tracker
 from func import myFunc
+from goal_tracker import goal_tracker
 from motion_link import MotionLink, MotionLinkError
 from mpu6050_imu import imu, get_pitch, get_roll, get_yaw
 from rknnpool import rknnPoolExecutor
@@ -39,17 +42,20 @@ SERIAL_PORT = "auto"
 SERIAL_BAUD = 115200
 
 # 模型参数
-MODEL_PATH = "./rknnModel/model_26.7.25_i8.rknn"
+MODEL_PATH = "./rknnModel/football_8_16_100.rknn"
 TPEs = 6
 
-# Phase 5A yaw, 5B lateral, 5C camera follow and 5D FOV protection.
+# Phase 5A yaw, 5B lateral, 5C camera follow, 5D FOV protection and 5E search.
 BALL_CONTROL_PERIOD = 0.05
 BALL_ACQUIRE_CYCLES = 3
 BALL_LOST_TIMEOUT = 0.5
 BALL_TEST_MAX_DURATION = 30.0
 BALL_MOTION_MODES = (
     "ball-yaw-test", "ball-strafe-test", "ball-follow-test",
-    "ball-fov-test")
+    "ball-fov-test", "ball-search-test")
+
+# Phase 5 后续: goal (球门) 检测与几何（干运行，不产生运动）。
+GOAL_GEOMETRY_PERIOD = 0.2    # 几何计算节流周期（秒），约 5 Hz
 BALL_PROFILES = {
     "standard": {
         "duration": 10.0,
@@ -147,13 +153,46 @@ BALL_FOV_DEFAULTS = {
     "fov_edge_exit": 0.30,
     "fov_translation_scale": 0.25,
 }
+BALL_SEARCH_DEFAULTS = {
+    "duration": 30.0,
+    "min_vx": 250,
+    "max_vx": 800,
+    "max_vx_step": 120,
+    "vx_kp": 1000.0,
+    "vx_sign": -1,
+    "min_vy": 200,
+    "max_vy": 600,
+    "max_vy_step": 100,
+    "distance_kp": 4000.0,
+    "distance_deadband": 0.05,
+    "target_box_ratio": 0.35,
+    "vy_sign": 1,
+    "min_wz": 60,
+    "max_wz": 260,
+    "kp": 320.0,
+    "deadband": 0.10,
+    "yaw_sign": 1,
+    "min_confidence": 0.35,
+    "lost_timeout": 1.5,
+    "hold_arm_until_duration": False,
+    "fov_error_alpha": 0.55,
+    "fov_rate_alpha": 0.35,
+    "fov_prediction_horizon": 0.15,
+    "fov_predict_hold": 0.15,
+    "fov_edge_enter": 0.55,
+    "fov_edge_exit": 0.30,
+    "fov_translation_scale": 0.25,
+    "search_wz": 80,
+    "search_timeout": 1.5,
+    "search_min_exit_error": 0.30,
+}
 
 
 def build_arg_parser():
     parser = argparse.ArgumentParser(
         description="RK3588 football inference and bounded C5 motion tests")
     parser.add_argument(
-        "--mode", choices=("idle", "inference") + BALL_MOTION_MODES,
+        "--mode", choices=("idle", "inference", "goal-test") + BALL_MOTION_MODES,
         default="idle",
         help="idle/inference never move; ball tests are dry-run unless --execute")
     parser.add_argument(
@@ -165,6 +204,9 @@ def build_arg_parser():
     parser.add_argument(
         "--execute", action="store_true",
         help="explicitly ARM and send bounded motion in a ball test mode")
+    parser.add_argument(
+        "--continuous", action="store_true",
+        help="boot service only: wait and re-arm after bounded search timeout")
     parser.add_argument(
         "--duration", type=float,
         help="ball motion test duration in seconds (1..30)")
@@ -213,6 +255,9 @@ def build_arg_parser():
     parser.add_argument("--fov-edge-enter", type=float)
     parser.add_argument("--fov-edge-exit", type=float)
     parser.add_argument("--fov-translation-scale", type=float)
+    parser.add_argument("--search-wz", type=int)
+    parser.add_argument("--search-timeout", type=float)
+    parser.add_argument("--search-min-exit-error", type=float)
     return parser
 
 
@@ -226,16 +271,24 @@ def parse_args(argv=None):
         "fov_translation_scale")
     explicit_fov = any(
         getattr(args, name) is not None for name in fov_argument_names)
+    search_argument_names = (
+        "search_wz", "search_timeout", "search_min_exit_error")
+    explicit_search = any(
+        getattr(args, name) is not None for name in search_argument_names)
     if args.mode == "ball-strafe-test":
         if args.profile != "standard":
             parser.error("yaw profiles are not valid with ball-strafe-test")
         defaults = BALL_STRAFE_DEFAULTS
-    elif args.mode in ("ball-follow-test", "ball-fov-test"):
+    elif args.mode in (
+            "ball-follow-test", "ball-fov-test", "ball-search-test"):
         if args.profile != "standard":
             parser.error("yaw profiles are not valid with ball follow modes")
-        defaults = (
-            BALL_FOV_DEFAULTS if args.mode == "ball-fov-test"
-            else BALL_FOLLOW_DEFAULTS)
+        if args.mode == "ball-search-test":
+            defaults = BALL_SEARCH_DEFAULTS
+        elif args.mode == "ball-fov-test":
+            defaults = BALL_FOV_DEFAULTS
+        else:
+            defaults = BALL_FOLLOW_DEFAULTS
     else:
         defaults = BALL_PROFILES[args.profile]
 
@@ -248,11 +301,18 @@ def parse_args(argv=None):
 
     if args.execute and args.mode not in BALL_MOTION_MODES:
         parser.error("--execute is only valid with a ball motion test mode")
+    if args.continuous and args.mode != "ball-search-test":
+        parser.error("--continuous requires --mode ball-search-test")
+    if args.continuous and not args.execute:
+        parser.error("--continuous requires --execute")
     if (args.control_log and
-            args.mode not in ("ball-follow-test", "ball-fov-test")):
+            args.mode not in (
+                "ball-follow-test", "ball-fov-test", "ball-search-test")):
         parser.error("--control-log requires a ball follow mode")
-    if explicit_fov and args.mode != "ball-fov-test":
-        parser.error("FOV parameters require --mode ball-fov-test")
+    if explicit_fov and args.mode not in ("ball-fov-test", "ball-search-test"):
+        parser.error("FOV parameters require a FOV ball mode")
+    if explicit_search and args.mode != "ball-search-test":
+        parser.error("search parameters require --mode ball-search-test")
     if explicit_hold and not args.execute:
         parser.error("--hold-arm-until-duration requires --execute")
     if args.mode in BALL_MOTION_MODES:
@@ -266,7 +326,8 @@ def parse_args(argv=None):
         parser.error("--lost-timeout must be in [0.5, 2.0]")
 
     try:
-        if args.mode in ("ball-follow-test", "ball-fov-test"):
+        if args.mode in (
+                "ball-follow-test", "ball-fov-test", "ball-search-test"):
             make_ball_follow_config(args).validate()
         elif args.mode == "ball-strafe-test":
             BallStrafeConfig(
@@ -429,6 +490,34 @@ def print_decision(decision, session):
         f"armed={session.armed} paused={session.paused}")
 
 
+def print_goal(corners):
+    """打印球门几何结果（TL/TR 角点、横梁顶宽与来源）。"""
+    tl = corners.get("TL")
+    tr = corners.get("TR")
+    width = corners.get("top_width")
+    source = corners.get("source", "-")
+    tl_text = f"({tl[0]},{tl[1]})" if tl else "-"
+    tr_text = f"({tr[0]},{tr[1]})" if tr else "-"
+    width_text = f"{width:.1f}px" if width is not None else "-"
+    print(
+        f"[GOAL] TL={tl_text} TR={tr_text} "
+        f"top_width={width_text} source={source}")
+
+
+def draw_goal(image, corners):
+    """在图像上画球门四角与横梁（仅非 headless 显示用）。"""
+    tl = corners.get("TL")
+    tr = corners.get("TR")
+    bl = corners.get("BL")
+    br = corners.get("BR")
+    for point in (tl, tr, bl, br):
+        if point is not None:
+            cv2.circle(image, (int(point[0]), int(point[1])), 5, (0, 255, 0), 2)
+    if tl is not None and tr is not None:
+        cv2.line(image, (int(tl[0]), int(tl[1])),
+                 (int(tr[0]), int(tr[1])), (0, 255, 0), 2)
+
+
 def open_motion_link():
     link = MotionLink(port=SERIAL_PORT, baudrate=SERIAL_BAUD)
     link.open()
@@ -501,7 +590,7 @@ def make_ball_follow_config(args):
         max_wz=args.max_wz,
         yaw_sign=args.yaw_sign,
     )
-    if args.mode == "ball-fov-test":
+    if args.mode in ("ball-fov-test", "ball-search-test"):
         values.update(
             fov_enabled=True,
             fov_error_alpha=args.fov_error_alpha,
@@ -511,6 +600,13 @@ def make_ball_follow_config(args):
             fov_edge_enter=args.fov_edge_enter,
             fov_edge_exit=args.fov_edge_exit,
             fov_translation_scale=args.fov_translation_scale,
+        )
+    if args.mode == "ball-search-test":
+        values.update(
+            search_enabled=True,
+            search_wz=args.search_wz,
+            search_timeout=args.search_timeout,
+            search_min_exit_error=args.search_min_exit_error,
         )
     return BallFollowConfig(**values)
 
@@ -525,6 +621,7 @@ def make_ball_follow_session(args, motion_link):
         acquire_cycles=BALL_ACQUIRE_CYCLES,
         lost_timeout=args.lost_timeout,
         hold_arm_until_duration=args.hold_arm_until_duration,
+        continuous_rearm=args.continuous,
     )
 
 
@@ -599,17 +696,27 @@ def run(args):
                 f"lost={args.lost_timeout:.1f}s "
                 f"hold_arm={args.hold_arm_until_duration} "
                 f"lateral_sign={args.lateral_sign:+d}")
-        elif args.mode in ("ball-follow-test", "ball-fov-test"):
+        elif args.mode in (
+                "ball-follow-test", "ball-fov-test", "ball-search-test"):
             ball_session = make_ball_follow_session(args, motion_link)
-            phase = "5D" if args.mode == "ball-fov-test" else "5C"
-            log_prefix = "ball-fov" if args.mode == "ball-fov-test" else "ball-follow"
+            phase = {
+                "ball-follow-test": "5C",
+                "ball-fov-test": "5D",
+                "ball-search-test": "5E",
+            }[args.mode]
+            log_prefix = {
+                "ball-follow-test": "ball-follow",
+                "ball-fov-test": "ball-fov",
+                "ball-search-test": "ball-search",
+            }[args.mode]
             control_log_path = args.control_log or os.path.join(
                 "logs", time.strftime(f"{log_prefix}-%Y%m%d-%H%M%S.csv"))
             control_logger = ControlCsvLogger(
                 control_log_path, mode=args.mode)
             action = "允许 vx+vy+wz" if args.execute else "只打印，不 ARM"
             print(
-                f"[BALL] Phase {phase} {action}；duration={args.duration:.1f}s "
+                f"[BALL] Phase {phase} {action}；"
+                f"duration={'continuous' if args.continuous else f'{args.duration:.1f}s'} "
                 f"vx=[-{args.max_vx},{args.max_vx}] "
                 f"vy=[-{args.max_vy},{args.max_vy}] "
                 f"wz=[-{args.max_wz},{args.max_wz}] "
@@ -622,16 +729,25 @@ def run(args):
                 f"vx_sign={args.vx_sign:+d} "
                 f"vy_sign={args.vy_sign:+d} "
                 f"yaw_sign={args.yaw_sign:+d}")
-            if args.mode == "ball-fov-test":
+            if args.mode in ("ball-fov-test", "ball-search-test"):
                 print(
                     f"[BALL] FOV edge={args.fov_edge_enter:.2f}/"
                     f"{args.fov_edge_exit:.2f} "
                     f"predict={args.fov_prediction_horizon:.2f}s "
                     f"hold={args.fov_predict_hold:.2f}s "
                     f"translation={args.fov_translation_scale:.2f}")
+            if args.mode == "ball-search-test":
+                print(
+                    f"[BALL] SEARCH wz={args.search_wz} "
+                    f"timeout={args.search_timeout:.2f}s "
+                    f"min_exit_error={args.search_min_exit_error:.2f} "
+                    f"continuous_rearm={args.continuous}")
             print(f"[BALL] 逐周期 CSV: {control_logger.path}")
         else:
-            print("系统就绪；推理模式不根据检测结果发送运动指令")
+            if args.mode == "goal-test":
+                print("[GOAL] 球门检测干运行：检测并计算球门角点/顶宽，不产生运动")
+            else:
+                print("系统就绪；推理模式不根据检测结果发送运动指令")
 
         prev_state = state_mgr.state
         frames = 0
@@ -641,10 +757,12 @@ def run(args):
         last_decision = None
         last_decision_log = 0.0
         last_decision_state = None
+        goal_geometry_last = 0.0
 
         while cap.isOpened():
             now = time.monotonic()
             if (ball_session is not None and
+                    not args.continuous and
                     now - test_start >= args.duration):
                 ball_session.stop("duration")
                 print("[BALL] 达到测试时限，已 STOP")
@@ -678,9 +796,11 @@ def run(args):
                     print("推理池异常，退出")
                     exit_code = 1
                     break
-                frame, boxes, classes, scores = result
+                clean_frame, frame, boxes, classes, scores = result
 
                 football = tracker.update(boxes, classes, scores)
+                # 球门缓存：所有推理模式都刷新，供 goal-test / 后续球门控制使用
+                goal_tracker.update(boxes, classes, scores)
                 if football is not None:
                     x, y, confidence = football
                     cv2.drawMarker(
@@ -691,10 +811,20 @@ def run(args):
                         (x + 20, y - 10), cv2.FONT_HERSHEY_SIMPLEX,
                         0.5, (0, 255, 255), 2)
 
+                if args.mode == "goal-test":
+                    if now - goal_geometry_last >= GOAL_GEOMETRY_PERIOD:
+                        goal_geometry_last = now
+                        corners = goal_tracker.compute_geometry(clean_frame)
+                        if corners is not None:
+                            print_goal(corners)
+                            draw_goal(frame, corners)
+
                 if ball_session is not None:
                     observation = tracker.get(max_age=None)
                     decision_now = time.monotonic()
-                    if args.mode in ("ball-follow-test", "ball-fov-test"):
+                    if args.mode in (
+                            "ball-follow-test", "ball-fov-test",
+                            "ball-search-test"):
                         decision = ball_session.tick(
                             observation, frame.shape[1], frame.shape[0],
                             now=decision_now)
@@ -724,6 +854,7 @@ def run(args):
                 print("[切换] INFERENCE → IDLE，停止推理")
                 drain_pool(pool)
                 tracker.clear()
+                goal_tracker.clear()
                 if motion_link is not None:
                     motion_link.safe_stop()
                 loop_time = time.monotonic()
@@ -755,10 +886,12 @@ def run(args):
     except KeyboardInterrupt:
         print("\n收到 Ctrl+C，停止")
     except (MotionLinkError, OSError, ValueError) as error:
+        traceback.print_exc()
         print(f"[BALL] 控制链路异常: {error}")
         exit_code = 1
     finally:
         tracker.clear()
+        goal_tracker.clear()
         if ball_session is not None:
             ball_session.stop("exit")
         if control_logger is not None:
@@ -782,5 +915,11 @@ def main(argv=None):
     return run(parse_args(argv))
 
 
+def handle_termination(_signum, _frame):
+    """Convert systemd SIGTERM into the normal STOP/DISARM cleanup path."""
+    raise KeyboardInterrupt
+
+
 if __name__ == "__main__":
+    signal.signal(signal.SIGTERM, handle_termination)
     raise SystemExit(main())

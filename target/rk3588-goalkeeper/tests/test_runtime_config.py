@@ -32,7 +32,7 @@ class RuntimeConfigTests(unittest.TestCase):
     def test_latest_visual_model_configuration_is_preserved(self):
         constants = read_constants(PROJECT / "main.py")
         self.assertEqual(constants["MODEL_PATH"],
-                         "./rknnModel/model_26.7.25_i8.rknn")
+                         "./rknnModel/football_8_16_100.rknn")
         self.assertEqual(constants["TPEs"], 6)
 
     def test_motion_link_does_not_regress_to_debug_uart(self):
@@ -122,6 +122,18 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertEqual(defaults["fov_translation_scale"], 0.25)
         self.assertLessEqual(defaults["fov_predict_hold"], 0.2)
         self.assertTrue(defaults["hold_arm_until_duration"])
+
+    def test_ball_search_defaults_are_bounded_and_disarm(self):
+        constants = read_constants(PROJECT / "main.py")
+        defaults = constants["BALL_SEARCH_DEFAULTS"]
+        self.assertIn("ball-search-test", constants["BALL_MOTION_MODES"])
+        self.assertEqual(defaults["search_wz"], 80)
+        self.assertEqual(defaults["search_timeout"], 1.5)
+        self.assertEqual(defaults["search_min_exit_error"], 0.30)
+        self.assertEqual(defaults["fov_predict_hold"], 0.15)
+        self.assertFalse(defaults["hold_arm_until_duration"])
+        self.assertLessEqual(defaults["search_wz"], defaults["max_wz"])
+        self.assertLessEqual(defaults["search_timeout"], 2.0)
 
 
 if __name__ == "__main__":

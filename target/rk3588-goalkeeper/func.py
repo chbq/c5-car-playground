@@ -117,53 +117,77 @@ def box_process(position):
 
     return xyxy
 
+_PRINTED_OUTPUT_SHAPES = False
+
+
 def yolov8_post_process(input_data):
-    boxes, scores, classes_conf = [], [], []
-    defualt_branch=3
-    pair_per_branch = len(input_data)//defualt_branch
-    # Python 忽略 score_sum 输出
-    for i in range(defualt_branch):
-        boxes.append(box_process(input_data[pair_per_branch*i]))
-        classes_conf.append(input_data[pair_per_branch*i+1])
-        scores.append(np.ones_like(input_data[pair_per_branch*i+1][:,:1,:,:], dtype=np.float32))
+    """ultralytics RKNN 导出格式后处理。
 
-    def sp_flatten(_in):
-        ch = _in.shape[1]
-        _in = _in.transpose(0,2,3,1)
-        return _in.reshape(-1, ch)
+    football_8_16_100.rknn 输出单张量 (1, 4+nc, 8400)：已 DFL 解码并 concat，
+    前 4 通道 = xywh 框 [cx, cy, w, h]（640 推理空间），后 nc 通道 = class score（已 sigmoid）。
+    8400 = 80*80 + 40*40 + 20*20。
+    """
+    global _PRINTED_OUTPUT_SHAPES
 
-    boxes = [sp_flatten(_v) for _v in boxes]
-    classes_conf = [sp_flatten(_v) for _v in classes_conf]
-    scores = [sp_flatten(_v) for _v in scores]
+    preds = input_data[0]
+    if preds.ndim == 3:
+        preds = preds[0]  # (1, 6, 8400) -> (6, 8400)
+    preds = preds.T       # (6, 8400) -> (8400, 6)
 
-    boxes = np.concatenate(boxes)
-    classes_conf = np.concatenate(classes_conf)
-    scores = np.concatenate(scores)
+    boxes = preds[:, :4]      # xywh: [cx, cy, w, h]，640 空间
+    cls_scores = preds[:, 4:]  # (8400, nc)
 
-    # filter according to threshold
-    boxes, classes, scores = filter_boxes(boxes, scores, classes_conf)
+    classes = np.argmax(cls_scores, axis=1)
+    scores = cls_scores.max(axis=1)
 
-    # nms
+    keep = np.where(scores >= OBJ_THRESH)[0]
+    boxes = boxes[keep]
+    classes = classes[keep]
+    scores = scores[keep]
+
+    if not _PRINTED_OUTPUT_SHAPES:
+        _PRINTED_OUTPUT_SHAPES = True
+        print(
+            f"[RKNN] 输出张量数={len(input_data)} "
+            f"shapes={[getattr(t, 'shape', None) for t in input_data]} "
+            f"dtypes={[getattr(t, 'dtype', None) for t in input_data]}"
+        )
+        print(
+            f"[RKNN] 检出={boxes.shape[0]} 前3框(反算前)={boxes[:3].tolist()} "
+            f"classes={classes[:3].tolist()} scores={scores[:3].tolist()}"
+        )
+
+    if boxes.shape[0] == 0:
+        return None, None, None
+
+    # 模型输出 xywh [cx, cy, w, h] → 转 xyxy [x1, y1, x2, y2]
+    # （下游 nms_boxes / draw / tracker 均按 xyxy 处理）
+    cx = boxes[:, 0]
+    cy = boxes[:, 1]
+    w = boxes[:, 2]
+    h = boxes[:, 3]
+    boxes = np.stack(
+        [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2], axis=1
+    )
+
+    # 每类分别 NMS（沿用 nms_boxes，输入 xyxy）
     nboxes, nclasses, nscores = [], [], []
     for c in set(classes):
-        inds = np.where(classes == c)
+        inds = np.where(classes == c)[0]
         b = boxes[inds]
-        c = classes[inds]
         s = scores[inds]
-        keep = nms_boxes(b, s)
+        keep_idx = nms_boxes(b, s)
+        if len(keep_idx):
+            nboxes.append(b[keep_idx])
+            nclasses.append(classes[inds][keep_idx])
+            nscores.append(s[keep_idx])
 
-        if len(keep) != 0:
-            nboxes.append(b[keep])
-            nclasses.append(c[keep])
-            nscores.append(s[keep])
-
-    if not nclasses and not nscores:
+    if not nboxes:
         return None, None, None
 
     boxes = np.concatenate(nboxes)
     classes = np.concatenate(nclasses)
     scores = np.concatenate(nscores)
-
     return boxes, classes, scores
 
 def draw(image, boxes, scores, classes):
@@ -253,6 +277,27 @@ def get_goal(boxes, classes, scores):
     return _get_best_detection(boxes, classes, scores, GOAL_CLASS_ID)
 
 
+def _get_best_detection_xyxy(boxes, classes, scores, class_id):
+    """提取指定类别置信度最高的目标的原始框 [x1,y1,x2,y2] 与置信度。"""
+    if boxes is None or len(classes) == 0:
+        return None
+
+    best_score = 0
+    best = None
+    for box, cls, score in zip(boxes, classes, scores):
+        if cls == class_id and score > best_score:
+            # box: [left, top, right, bottom]（原始图像坐标）
+            best = (float(box[0]), float(box[1]),
+                    float(box[2]), float(box[3]), float(score))
+            best_score = score
+    return best
+
+
+def get_goal_box(boxes, classes, scores):
+    """返回置信度最高的球门检测框 [x1,y1,x2,y2] 和置信度；无球门返回 None。"""
+    return _get_best_detection_xyxy(boxes, classes, scores, GOAL_CLASS_ID)
+
+
 def myFunc(rknn_lite, IMG):
     IMG2 = cv2.cvtColor(IMG, cv2.COLOR_BGR2RGB)
     # 等比例缩放
@@ -265,6 +310,7 @@ def myFunc(rknn_lite, IMG):
 
     boxes, classes, scores = yolov8_post_process(outputs)
 
+    annotated = IMG
     if boxes is not None:
         # 将 boxes 从 640 推理空间转换回原始图像坐标
         # box: [x1, y1, x2, y2], padding: (left, top), ratio: (w_ratio, h_ratio)
@@ -273,6 +319,8 @@ def myFunc(rknn_lite, IMG):
         boxes[:, 2] = (boxes[:, 2] - padding[0]) / ratio[0]  # x2
         boxes[:, 3] = (boxes[:, 3] - padding[1]) / ratio[1]  # y2
 
-        draw(IMG, boxes, scores, classes)
+        # 在副本上画框，保留干净 IMG 给球门几何（边缘/角点检测不能被画的框污染）
+        annotated = IMG.copy()
+        draw(annotated, boxes, scores, classes)
 
-    return IMG, boxes, classes, scores
+    return IMG, annotated, boxes, classes, scores

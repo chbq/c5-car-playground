@@ -633,3 +633,25 @@ Added `docs/handoff-phase6.md` and `prompts/phase6-kickoff.md` as the curated
 cross-user handoff. Raw Codex sessions, credentials, machine-local paths,
 build outputs and logs are deliberately excluded; Git plus the separately
 checksummed workspace overlay is the recovery source.
+
+## Phase 6 board-source reconciliation
+
+Date: 2026-08-26
+
+- Connected to `orangepi5pro` over SSH for a bounded read-only inventory. The
+  goalkeeper service was inactive/disabled and no motion process or CH340
+  device was used.
+- Archived 47 selected source, test, configuration, script and documentation
+  files from `c5-goalkeeper-autostart-speed2x-20260823`; every local SHA-256
+  matched the board source. Models, logs and bytecode were excluded.
+- Recovered Phase 5E bounded yaw-only search, goal tracking, goal geometry,
+  pixel calibration and their host tests. The accepted Phase 5C signed camera
+  axes and the MotionLink/protocol implementation were preserved.
+- Updated the software model baseline to `football_8_16_100.rknn`, rejected
+  stale runtime-test expectations, added empty-ROI protection and rejected
+  stale goal boxes before geometry processing.
+- Deliberately excluded the board launchers/service that automatically pass
+  `--execute --continuous`; repository defaults remain non-moving.
+- `tools/test-rk-host.ps1` passed 92 tests and Python `compileall`. No Orange
+  Pi deployment, serial command, ARM, firmware build, flash or motor motion
+  was performed.

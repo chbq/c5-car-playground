@@ -16,9 +16,9 @@
 模型、视频、wheel、IDE/cache 和旧 Agent 元数据不纳入 Git。
 
 实物已通过 SSH 确认为 Orange Pi 5 Pro（RK3588S）、Orange Pi Ubuntu
-22.04.5。远端 2026-07-26 视觉基线使用
-`model_26.7.25_i8.rknn`、6 个推理 worker 和 `NMS_THRESH=0.2`；上述参数已合入，
-模型文件仅保存在板端和忽略的本机备份中。`brltty-udev.service` 已 mask，
+22.04.5。2026-08-26 恢复的当前源码基线使用
+`football_8_16_100.rknn`、6 个推理 worker 和 `NMS_THRESH=0.2`；上述参数已合入，
+模型文件仍只保存在板端。`brltty-udev.service` 已 mask，
 重启后 CH340 稳定枚举；不需要删除 brltty 软件包。
 
 ## 接线
@@ -128,6 +128,27 @@ CSV 额外记录滤波/预测误差、误差速度、区域、数据年龄和丢
 独立 staging `c5-goalkeeper-staging-phase5d-fov-20260801` 已通过板端 65 项测试、
 compileall、CLI 和 5 秒无球 dry-run；约 56 FPS、58 行 CSV、全程未 ARM，最终 QUERY
 为 `HOST/DISARMED/STOPPED/errors=0`。
+
+Phase 5E 主动重捕获默认也是 dry-run：
+
+```bash
+python3 main.py --headless --mode ball-search-test
+```
+
+它只在已确认并 ARM 的会话中，按球最后离开方向执行有界纯旋转搜索；搜索期间
+`vx=vy=0`，超时 STOP/DISARM，重捕获仍需连续三周期确认。板端历史验收记录已归档，
+但自动 `--execute --continuous` 启动配置没有合入仓库默认。
+
+球门检测与几何 dry-run：
+
+```bash
+python3 main.py --headless --mode goal-test
+python3 calibrate_goal.py --headless
+```
+
+当前模型基线为 `football_8_16_100.rknn`。`GoalTracker` 输出球门框、中心、角点和
+横梁顶宽；`config.json` 保存像素目标值。这些数据不是米制距离或场地位姿，也不能
+区分己方和对方球门。
 
 ## 后续边界
 

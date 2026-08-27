@@ -108,3 +108,18 @@ python3 main.py --headless --mode ball-fov-test --execute
 但随后确认电池亏电，本轮不作为边缘回中、预测和重捕获的实车行为验收。
 该模式解决视野保持，不承担球场定位或正式守门决策；后续见
 [goalkeeper-behavior.md](goalkeeper-behavior.md)。
+
+## Phase 5E：有界主动重捕获
+
+`ball-search-test` 在 Phase 5D 的 150 ms 仅转向预测结束后，可按球最后离开画面的
+方向继续纯旋转搜索。首次启动无球、中央丢球或未完成连续三周期确认时不会搜索或
+ARM；搜索期间固定 `vx=vy=0`，超时后 STOP/DISARM，重新连续确认三周期才恢复三轴。
+
+```bash
+# 默认 dry-run，不打开运动授权
+python3 main.py --headless --mode ball-search-test
+```
+
+开发板归档记录包含左右搜索、单帧抑制、连续重捕获、超时和下地验收，但本轮没有
+重新连接运动链路复核。板端曾使用的自动 `--execute --continuous` 启动配置不纳入
+仓库安全默认；任何再次执行仍需明确授权。

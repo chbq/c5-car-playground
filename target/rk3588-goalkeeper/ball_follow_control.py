@@ -12,6 +12,7 @@ class BallFollowState(Enum):
     NO_TARGET = "NO_TARGET"
     LOW_CONFIDENCE = "LOW_CONFIDENCE"
     PREDICTING = "PREDICTING"
+    SEARCHING = "SEARCHING"
     CENTERED = "CENTERED"
     TRACKING = "TRACKING"
 
@@ -22,6 +23,7 @@ class BallFovZone(Enum):
     TRACK = "TRACK"
     EDGE = "EDGE"
     PREDICTING = "PREDICTING"
+    SEARCHING = "SEARCHING"
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,10 @@ class BallFollowConfig:
     fov_edge_enter: float = 0.55
     fov_edge_exit: float = 0.30
     fov_translation_scale: float = 0.25
+    search_enabled: bool = False
+    search_wz: int = 80
+    search_timeout: float = 1.5
+    search_min_exit_error: float = 0.30
 
     def validate(self):
         BallYawConfig(
@@ -99,6 +105,16 @@ class BallFollowConfig:
             raise ValueError("fov edge thresholds must satisfy 0 < exit < enter < 1")
         if not 0.0 <= self.fov_translation_scale <= 1.0:
             raise ValueError("fov_translation_scale must be in [0, 1]")
+        if self.search_enabled:
+            if not self.fov_enabled:
+                raise ValueError("search requires FOV prediction")
+            if not 0 < self.search_wz <= self.max_wz:
+                raise ValueError("search_wz must be in [1, max_wz]")
+            if not self.fov_predict_hold < self.search_timeout <= 10.0:
+                raise ValueError(
+                    "search_timeout must be greater than predict hold and <= 10.0")
+            if not 0.0 < self.search_min_exit_error < 1.0:
+                raise ValueError("search_min_exit_error must be in (0, 1)")
 
 
 @dataclass(frozen=True)
@@ -153,6 +169,7 @@ class BallFollowController:
         self._last_confidence = None
         self._fov_zone = BallFovZone.OFF
         self._lost_frames = 0
+        self._search_direction = 0
 
     def reset(self):
         self._yaw.reset()
@@ -165,6 +182,7 @@ class BallFollowController:
         self._last_confidence = None
         self._fov_zone = BallFovZone.OFF
         self._lost_frames = 0
+        self._search_direction = 0
 
     def update(self, x, box_height, confidence, frame_width, frame_height,
                now=None):
@@ -208,6 +226,12 @@ class BallFollowController:
             predicted_error = raw_error
             zone = BallFovZone.OFF
             yaw_error = raw_error
+
+        if self.config.search_enabled:
+            if abs(predicted_error) >= self.config.search_min_exit_error:
+                self._search_direction = 1 if predicted_error > 0 else -1
+            else:
+                self._search_direction = 0
 
         yaw_x = frame_width * (1.0 + yaw_error) / 2.0
         yaw = self._yaw.update(yaw_x, confidence, frame_width)
@@ -328,9 +352,9 @@ class BallFollowController:
                 self._last_observation_time is not None and
                 self._last_confidence is not None):
             age = max(0.0, now - self._last_observation_time)
+            predicted_error = self._clamp_error(
+                self._filtered_error + self._error_rate * age)
             if age <= self.config.fov_predict_hold:
-                predicted_error = self._clamp_error(
-                    self._filtered_error + self._error_rate * age)
                 yaw_x = frame_width * (1.0 + predicted_error) / 2.0
                 yaw = self._yaw.update(
                     yaw_x, self._last_confidence, frame_width)
@@ -355,6 +379,30 @@ class BallFollowController:
                     target_age=age,
                     lost_frames=self._lost_frames,
                     predicted_only=True,
+                )
+            if (self.config.search_enabled and self._search_direction != 0 and
+                    age < self.config.search_timeout):
+                self._last_vx = 0
+                self._last_vy = 0
+                self._fov_zone = BallFovZone.SEARCHING
+                return BallFollowDecision(
+                    state=BallFollowState.SEARCHING,
+                    error=0.0,
+                    distance_error=0.0,
+                    box_ratio=0.0,
+                    vx=0,
+                    vy=0,
+                    wz=(self._search_direction * self.config.yaw_sign *
+                        self.config.search_wz),
+                    x=x,
+                    box_height=box_height,
+                    confidence=confidence,
+                    zone=BallFovZone.SEARCHING,
+                    filtered_error=self._filtered_error,
+                    error_rate=self._error_rate,
+                    predicted_error=predicted_error,
+                    target_age=age,
+                    lost_frames=self._lost_frames,
                 )
         return self._stop_decision(
             state, x=x, box_height=box_height, confidence=confidence)
@@ -430,9 +478,11 @@ class BallFollowSession:
 
     def __init__(self, controller, link=None, execute=False,
                  control_period=0.05, acquire_cycles=3, lost_timeout=0.5,
-                 hold_arm_until_duration=False):
+                 hold_arm_until_duration=False, continuous_rearm=False):
         if execute and link is None:
             raise ValueError("execute mode requires a motion link")
+        if continuous_rearm and not execute:
+            raise ValueError("continuous re-arm requires execute mode")
         if control_period <= 0:
             raise ValueError("control_period must be positive")
         if acquire_cycles < 1:
@@ -447,8 +497,11 @@ class BallFollowSession:
         self.acquire_cycles = acquire_cycles
         self.lost_timeout = lost_timeout
         self.hold_arm_until_duration = hold_arm_until_duration
+        self.continuous_rearm = continuous_rearm
         self.armed = False
         self.paused = False
+        self.waiting_for_target = False
+        self.wait_count = 0
         self.pause_count = 0
         self.finished = False
         self.stop_reason = None
@@ -459,6 +512,7 @@ class BallFollowSession:
         self._last_tick = None
         self._last_target_time = None
         self._acquire_count = 0
+        self._recovery_started_at = None
 
     def tick(self, observation, frame_width, frame_height, now=None):
         """Process at most one control cycle and return its decision."""
@@ -484,6 +538,8 @@ class BallFollowSession:
             self._last_target_time = now
             self._acquire_count += 1
         else:
+            if self.armed and self._recovery_started_at is None:
+                self._recovery_started_at = now
             self._acquire_count = 0
 
         if not self.execute:
@@ -496,11 +552,28 @@ class BallFollowSession:
                 self.link.arm()
                 self.armed = True
                 self.paused = False
+                self.waiting_for_target = False
             elif (decision.has_target and
                   self._acquire_count >= self.acquire_cycles):
                 self.paused = False
 
-            if (not decision.has_target and self._last_target_time is not None and
+            confirmed = self._acquire_count >= self.acquire_cycles
+            if confirmed:
+                self._recovery_started_at = None
+
+            search_enabled = bool(getattr(
+                self.controller.config, "search_enabled", False))
+            if (search_enabled and self._recovery_started_at is not None and
+                    now - self._recovery_started_at >=
+                    self.controller.config.search_timeout):
+                if self.continuous_rearm:
+                    self._wait_for_target()
+                else:
+                    self.stop("search-timeout")
+                return decision
+
+            if (not search_enabled and not decision.has_target and
+                    self._last_target_time is not None and
                     now - self._last_target_time >= self.lost_timeout):
                 if self.hold_arm_until_duration:
                     self._hold_zero_for_target_loss()
@@ -508,11 +581,12 @@ class BallFollowSession:
                     self.stop("target-lost")
                     return decision
 
-            confirmed = self._acquire_count >= self.acquire_cycles
             if confirmed:
                 vx, vy, wz = decision.vx, decision.vy, decision.wz
-            elif self.armed and decision.predicted_only:
-                # A fresh prediction may rotate briefly, but never translate.
+            elif (self.armed and decision.state in (
+                    BallFollowState.PREDICTING,
+                    BallFollowState.SEARCHING)):
+                # Recovery may rotate briefly, but never translate.
                 vx, vy, wz = 0, 0, decision.wz
             else:
                 vx, vy, wz = 0, 0, 0
@@ -536,6 +610,23 @@ class BallFollowSession:
         self.pause_count += 1
         self._acquire_count = 0
 
+    def _wait_for_target(self):
+        """Disarm after bounded search but keep inference ready to re-arm."""
+        if self.waiting_for_target:
+            return
+        self.controller.reset()
+        self.link.safe_stop()
+        self.armed = False
+        self.paused = False
+        self.waiting_for_target = True
+        self.wait_count += 1
+        self.last_sent_vx = 0
+        self.last_sent_vy = 0
+        self.last_sent_wz = 0
+        self._last_target_time = None
+        self._acquire_count = 0
+        self._recovery_started_at = None
+
     def stop(self, reason):
         """Stop once; execute mode sends the global STOP command."""
         if self.finished:
@@ -543,6 +634,8 @@ class BallFollowSession:
         self.finished = True
         self.stop_reason = reason
         self.paused = False
+        self.waiting_for_target = False
+        self._recovery_started_at = None
         self.controller.reset()
         if self.execute:
             self.link.safe_stop()
