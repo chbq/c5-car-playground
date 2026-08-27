@@ -1,4 +1,5 @@
 import argparse
+from collections import deque
 import os
 import signal
 import time
@@ -25,6 +26,8 @@ from ball_strafe_control import (
 from football_tracker import tracker
 from func import myFunc
 from goal_tracker import goal_tracker
+from goalkeeper_log import GoalkeeperCsvLogger
+from goalkeeper_runtime import GoalkeeperDryRunSession
 from motion_link import MotionLink, MotionLinkError
 from mpu6050_imu import imu, get_pitch, get_roll, get_yaw
 from rknnpool import rknnPoolExecutor
@@ -53,6 +56,7 @@ BALL_TEST_MAX_DURATION = 30.0
 BALL_MOTION_MODES = (
     "ball-yaw-test", "ball-strafe-test", "ball-follow-test",
     "ball-fov-test", "ball-search-test")
+GOALKEEPER_MODE = "goalkeeper-test"
 
 # Phase 5 后续: goal (球门) 检测与几何（干运行，不产生运动）。
 GOAL_GEOMETRY_PERIOD = 0.2    # 几何计算节流周期（秒），约 5 Hz
@@ -192,7 +196,9 @@ def build_arg_parser():
     parser = argparse.ArgumentParser(
         description="RK3588 football inference and bounded C5 motion tests")
     parser.add_argument(
-        "--mode", choices=("idle", "inference", "goal-test") + BALL_MOTION_MODES,
+        "--mode",
+        choices=("idle", "inference", "goal-test", GOALKEEPER_MODE) +
+        BALL_MOTION_MODES,
         default="idle",
         help="idle/inference never move; ball tests are dry-run unless --execute")
     parser.add_argument(
@@ -248,6 +254,9 @@ def build_arg_parser():
     parser.add_argument(
         "--control-log",
         help="Phase 5C/5D CSV path; default logs/<mode>-<time>.csv")
+    parser.add_argument(
+        "--goalkeeper-log",
+        help="goalkeeper-test CSV path; default logs/goalkeeper-<time>.csv")
     parser.add_argument("--fov-error-alpha", type=float)
     parser.add_argument("--fov-rate-alpha", type=float)
     parser.add_argument("--fov-prediction-horizon", type=float)
@@ -309,6 +318,8 @@ def parse_args(argv=None):
             args.mode not in (
                 "ball-follow-test", "ball-fov-test", "ball-search-test")):
         parser.error("--control-log requires a ball follow mode")
+    if args.goalkeeper_log and args.mode != GOALKEEPER_MODE:
+        parser.error("--goalkeeper-log requires --mode goalkeeper-test")
     if explicit_fov and args.mode not in ("ball-fov-test", "ball-search-test"):
         parser.error("FOV parameters require a FOV ball mode")
     if explicit_search and args.mode != "ball-search-test":
@@ -321,7 +332,7 @@ def parse_args(argv=None):
     elif args.profile != "standard":
         parser.error("ground profiles require --mode ball-yaw-test")
     if args.headless and args.mode == "idle":
-        parser.error("--headless requires inference or a ball motion test")
+        parser.error("--headless requires an inference mode")
     if not 0.5 <= args.lost_timeout <= 2.0:
         parser.error("--lost-timeout must be in [0.5, 2.0]")
 
@@ -373,17 +384,20 @@ def camera_description(cap):
     return width, height, fps, fourcc_text
 
 
-def prime_pool(cap, pool, count):
+def prime_pool(cap, pool, count, capture_times=None):
     """预热推理池：向池中塞入 count 帧，填满流水线。"""
     for _ in range(count):
         ok, frame = cap.read()
         if not ok:
             return False
+        captured_at = time.monotonic()
         pool.put(frame)
+        if capture_times is not None:
+            capture_times.append(captured_at)
     return True
 
 
-def drain_pool(pool):
+def drain_pool(pool, capture_times=None):
     """排空推理池中残留的帧。"""
     from queue import Empty
 
@@ -392,6 +406,8 @@ def drain_pool(pool):
             pool.queue.get_nowait()
         except Empty:
             break
+    if capture_times is not None:
+        capture_times.clear()
 
 
 def draw_status(image, state, link, decision):
@@ -425,9 +441,15 @@ def draw_status(image, state, link, decision):
             command_text = f"vy={decision.vy:+d}"
         else:
             command_text = f"wz={decision.wz:+d}"
+        if hasattr(decision, "error"):
+            label = "BALL"
+            error = decision.error
+        else:
+            label = "GK"
+            error = getattr(decision, "goal_error", 0.0)
         text = (
-            f"BALL: {decision.state.value} "
-            f"error={decision.error:+.3f} {command_text}")
+            f"{label}: {decision.state.value} "
+            f"error={error:+.3f} {command_text}")
         zone = getattr(decision, "zone", None)
         if zone is not None and zone.value != "OFF":
             text += f" zone={zone.value}"
@@ -631,6 +653,9 @@ def run(args):
     motion_link = None
     ball_session = None
     control_logger = None
+    goalkeeper_session = None
+    goalkeeper_logger = None
+    capture_times = deque()
     imu_started = False
     exit_code = 0
 
@@ -649,17 +674,20 @@ def run(args):
 
         pool = rknnPoolExecutor(rknnModel=MODEL_PATH, TPEs=TPEs, func=myFunc)
 
-        try:
-            motion_link = open_motion_link()
-        except (MotionLinkError, OSError, ValueError) as error:
-            print(f"[C5] 运动链路不可用: {error}")
-            if motion_link is not None:
-                motion_link.close()
-            motion_link = None
-            if args.execute:
-                print("[C5] --execute 要求可用的 HOST 链路，测试取消")
-                return 2
-            print("[C5] 继续视觉/干运行，不会自动运动")
+        if args.mode == GOALKEEPER_MODE:
+            print("[GK] 安全门：不打开 MotionLink，不 ARM，不发送底盘或推板命令")
+        else:
+            try:
+                motion_link = open_motion_link()
+            except (MotionLinkError, OSError, ValueError) as error:
+                print(f"[C5] 运动链路不可用: {error}")
+                if motion_link is not None:
+                    motion_link.close()
+                motion_link = None
+                if args.execute:
+                    print("[C5] --execute 要求可用的 HOST 链路，测试取消")
+                    return 2
+                print("[C5] 继续视觉/干运行，不会自动运动")
 
         try:
             imu.start()
@@ -667,7 +695,7 @@ def run(args):
         except Exception as error:
             print(f"[IMU] 启动失败: {error}（继续运行）")
 
-        if not prime_pool(cap, pool, TPEs + 1):
+        if not prime_pool(cap, pool, TPEs + 1, capture_times):
             print("预热失败：无法读取足够帧")
             return 2
 
@@ -743,6 +771,15 @@ def run(args):
                     f"min_exit_error={args.search_min_exit_error:.2f} "
                     f"continuous_rearm={args.continuous}")
             print(f"[BALL] 逐周期 CSV: {control_logger.path}")
+        elif args.mode == GOALKEEPER_MODE:
+            goalkeeper_log_path = args.goalkeeper_log or os.path.join(
+                "logs", time.strftime("goalkeeper-%Y%m%d-%H%M%S.csv"))
+            goalkeeper_logger = GoalkeeperCsvLogger(goalkeeper_log_path)
+            goalkeeper_session = GoalkeeperDryRunSession(
+                logger=goalkeeper_logger)
+            print("[GK] 解析式守门员干运行：球门锚定、看球、拦截、近距挡球意图")
+            print("[GK] 推板仅记录 IDLE/CYCLE 意图；当前没有串口实现或电机动作")
+            print(f"[GK] 可回放 CSV: {goalkeeper_logger.path}")
         else:
             if args.mode == "goal-test":
                 print("[GOAL] 球门检测干运行：检测并计算球门角点/顶宽，不产生运动")
@@ -758,6 +795,7 @@ def run(args):
         last_decision_log = 0.0
         last_decision_state = None
         goal_geometry_last = 0.0
+        goalkeeper_frame_id = 0
 
         while cap.isOpened():
             now = time.monotonic()
@@ -778,24 +816,33 @@ def run(args):
                 print("摄像头读取失败，异常退出")
                 exit_code = 1
                 break
+            frame_captured_at = time.monotonic()
 
             if current_state == SystemState.INFERENCE:
                 if state_changed:
                     print("[切换] IDLE → INFERENCE，预热流水线...")
-                    drain_pool(pool)
-                    if not prime_pool(cap, pool, TPEs + 1):
+                    drain_pool(pool, capture_times)
+                    if not prime_pool(
+                            cap, pool, TPEs + 1, capture_times):
                         print("预热失败：摄像头读取失败")
                         exit_code = 1
                         break
                     print("[切换] 预热完成，开始推理")
                     loop_time = time.monotonic()
+                    continue
 
                 pool.put(frame)
+                capture_times.append(frame_captured_at)
                 result, ok = pool.get()
                 if not ok:
                     print("推理池异常，退出")
                     exit_code = 1
                     break
+                if not capture_times:
+                    print("推理帧时间戳队列异常，退出")
+                    exit_code = 1
+                    break
+                result_captured_at = capture_times.popleft()
                 clean_frame, frame, boxes, classes, scores = result
 
                 football = tracker.update(boxes, classes, scores)
@@ -850,11 +897,42 @@ def run(args):
                         print(f"[BALL] 会话结束: {ball_session.stop_reason}")
                         break
 
+                if goalkeeper_session is not None:
+                    decision_now = time.monotonic()
+                    _, candidate, goalkeeper_decision = (
+                        goalkeeper_session.tick(
+                            goalkeeper_frame_id,
+                            result_captured_at,
+                            decision_now,
+                            frame.shape[1],
+                            frame.shape[0],
+                            ball_info=tracker.get(max_age=None),
+                            goal_info=goal_tracker.get(max_age=None),
+                        ))
+                    goalkeeper_frame_id += 1
+                    last_decision = goalkeeper_decision
+                    log_now = time.monotonic()
+                    if (goalkeeper_decision.state != last_decision_state or
+                            log_now - last_decision_log >= 0.25):
+                        print(
+                            f"[GK] {goalkeeper_decision.state.value} "
+                            f"reason={goalkeeper_decision.reason} "
+                            f"candidate=({candidate.vx},{candidate.vy},"
+                            f"{candidate.wz}) "
+                            f"intent=({goalkeeper_decision.vx},"
+                            f"{goalkeeper_decision.vy},"
+                            f"{goalkeeper_decision.wz}) "
+                            f"pusher={goalkeeper_decision.pusher.value}")
+                        last_decision_state = goalkeeper_decision.state
+                        last_decision_log = log_now
+
             elif state_changed:
                 print("[切换] INFERENCE → IDLE，停止推理")
-                drain_pool(pool)
+                drain_pool(pool, capture_times)
                 tracker.clear()
                 goal_tracker.clear()
+                if goalkeeper_session is not None:
+                    goalkeeper_session.reset()
                 if motion_link is not None:
                     motion_link.safe_stop()
                 loop_time = time.monotonic()
@@ -896,6 +974,8 @@ def run(args):
             ball_session.stop("exit")
         if control_logger is not None:
             control_logger.close()
+        if goalkeeper_logger is not None:
+            goalkeeper_logger.close()
         if (motion_link is not None and
                 (ball_session is None or not ball_session.execute)):
             motion_link.safe_stop()

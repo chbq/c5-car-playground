@@ -655,3 +655,39 @@ Date: 2026-08-26
 - `tools/test-rk-host.ps1` passed 92 tests and Python `compileall`. No Orange
   Pi deployment, serial command, ARM, firmware build, flash or motor motion
   was performed.
+
+## Phase 6 analytic goalkeeper policy MVP
+
+Date: 2026-08-26
+
+- Added a pure `goalkeeper_policy.py` layer with timestamped perception frames,
+  opponent-goal relative anchoring, ball range hysteresis and explicit
+  `PusherIntent` output.
+- The policy consumes candidate axes from the accepted Phase 5C controller; it
+  does not duplicate camera-axis sign mapping or access RKNN, MotionLink or a
+  pusher serial adapter.
+- Three fresh goal observations are required before relative motion is
+  eligible. Goal loss, stale data, duplicate/out-of-order frames and invalid
+  inputs produce zero motion; reacquisition repeats the three-frame gate.
+- Far balls permit yaw only, warning-range balls permit bounded signed axes,
+  close balls stop the chassis and request `CYCLE`, and goal view limits take
+  priority over ball translation.
+- Fourteen focused synthetic tests passed. The full RK host suite passed 106
+  tests and `compileall`; no hardware connection or command was used.
+
+## Phase 6 goalkeeper dry-run integration
+
+Date: 2026-08-26
+
+- Added `goalkeeper-test` as a camera/RKNN dry-run mode. It explicitly skips
+  `open_motion_link()`, cannot accept `--execute`, and has no pusher transport.
+- Added a hardware-free runtime adapter that feeds the accepted Phase 5C
+  signed candidate axes into the pure goalkeeper policy.
+- Associated FIFO inference results with host monotonic capture timestamps and
+  logged replay inputs, candidates, decisions, reasons and pusher intents to
+  one CSV row per inference result.
+- The runtime still assumes the detector `goal` class is the opponent goal; it
+  does not establish goal identity, field pose or penalty-area containment.
+- Eighteen focused policy/runtime tests passed. The full RK host suite passed
+  111 tests and `compileall`; no board connection, serial open, ARM, firmware
+  flash, chassis command or pusher command was used.

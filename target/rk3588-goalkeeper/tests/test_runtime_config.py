@@ -44,6 +44,15 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertNotIn("/dev/ttyS7", main_source)
         self.assertNotIn("send_football_x", main_source)
 
+    def test_goalkeeper_mode_is_dry_run_and_not_a_motion_mode(self):
+        constants = read_constants(PROJECT / "main.py")
+        main_source = (PROJECT / "main.py").read_text(encoding="utf-8")
+        self.assertEqual(constants["GOALKEEPER_MODE"], "goalkeeper-test")
+        self.assertNotIn("goalkeeper-test", constants["BALL_MOTION_MODES"])
+        self.assertIn("if args.mode == GOALKEEPER_MODE:", main_source)
+        self.assertIn("不打开 MotionLink", main_source)
+        self.assertIn("GoalkeeperDryRunSession", main_source)
+
     def test_latest_detection_thresholds_are_preserved(self):
         constants = read_constants(PROJECT / "func.py")
         self.assertEqual(constants["OBJ_THRESH"], 0.25)

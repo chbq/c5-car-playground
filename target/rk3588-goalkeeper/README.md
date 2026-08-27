@@ -7,6 +7,7 @@
 - `ball_strafe_control.py` 只生成 `vy`，固定 `vx/wz=0`；
 - `ball_follow_control.py` 按球左右生成 `vx/wz`、按框远近生成 `vy`；
 - `ball-fov-test` 在 5C 基础上增加边缘转向优先、预测和滞回；
+- `goalkeeper_policy.py` 以解析式状态机约束球门锚定、球距离分级和推板逻辑意图；
 - `control_log.py` 以 20 Hz 记录检测、三轴、控制状态和 IMU；
 - `motion_link.py` 提供 `arm()`、`set_twist()`、`stop()`、`query()`；
 - `motion_cli.py` 用于人工 QUERY/STOP 和架空低速限时动作；
@@ -149,6 +150,22 @@ python3 calibrate_goal.py --headless
 当前模型基线为 `football_8_16_100.rknn`。`GoalTracker` 输出球门框、中心、角点和
 横梁顶宽；`config.json` 保存像素目标值。这些数据不是米制距离或场地位姿，也不能
 区分己方和对方球门。
+
+守门员解析式策略 dry-run：
+
+```bash
+python3 main.py --headless --mode goalkeeper-test
+python3 main.py --headless --mode goalkeeper-test \
+  --goalkeeper-log logs/goalkeeper-demo.csv
+```
+
+该模式接入相机、RKNN、球/球门跟踪和 Phase 5C 三轴候选，但显式跳过
+`open_motion_link()`，不 ARM、不发送底盘命令。每帧 CSV 包含采集/处理时间、检测框、
+候选三轴、状态机输出、原因和推板意图，可作为后续回放输入。推板仍只有
+`IDLE/CYCLE` 意图，没有串口实现或硬件动作。
+
+当前运行时把模型的 `goal` 检测当作调用方提供的“对方球门”观测；代码本身不能验证
+球门身份。相对球门像素约束不等于己方禁区定位。
 
 ## 后续边界
 
