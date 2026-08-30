@@ -3,6 +3,7 @@
 import csv
 from pathlib import Path
 import time
+import uuid
 
 
 FIELDS = (
@@ -36,6 +37,17 @@ FIELDS = (
     "pusher_intent",
     "valid_until_s",
 )
+
+
+def make_default_log_path(directory="logs", prefix="goalkeeper",
+                          wall_time=None, run_id=None):
+    """Return a collision-resistant path even when offline wall time repeats."""
+    wall_time = time.time() if wall_time is None else float(wall_time)
+    run_id = uuid.uuid4().hex[:8] if run_id is None else str(run_id)
+    if not run_id or any(char not in "0123456789abcdefABCDEF-_" for char in run_id):
+        raise ValueError("run_id contains unsupported characters")
+    stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(wall_time))
+    return Path(directory) / f"{prefix}-{stamp}-{run_id}.csv"
 
 
 class GoalkeeperCsvLogger:

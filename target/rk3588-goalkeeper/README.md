@@ -11,6 +11,7 @@
 - `control_log.py` 以 20 Hz 记录检测、三轴、控制状态和 IMU；
 - `motion_link.py` 提供 `arm()`、`set_twist()`、`stop()`、`query()`；
 - `motion_cli.py` 用于人工 QUERY/STOP 和架空低速限时动作；
+- `zdt_pusher_*.py` 和 `pusher_cli.py` 提供独立、默认禁用的 ZDT Emm 推板备用链路；
 - `doctor.py` 只读检查系统、Python、RKNN、模型、串口节点和权限；
 - `state_manager.py` 仅管理 IDLE/INFERENCE，不再兼任串口协议。
 
@@ -21,6 +22,11 @@
 `football_8_16_100.rknn`、6 个推理 worker 和 `NMS_THRESH=0.2`；上述参数已合入，
 模型文件仍只保存在板端。`brltty-udev.service` 已 mask，
 重启后 CH340 稳定枚举；不需要删除 brltty 软件包。
+
+无 WiFi 测试可使用 `c5-goalkeeper.service` 自动运行 headless
+`goalkeeper-test`。该服务不依赖桌面或网络，固定不打开 MotionLink/推板串口，并在
+2 小时后正常退出以限制日志增长；默认 CSV 带随机运行标识，离线墙钟重复也不会覆盖
+旧记录。详见[开机自启动说明](开机自启动使用说明.md)。
 
 ## 接线
 
@@ -33,7 +39,13 @@ Orange Pi USB-A → USB 数据线 → 核心板 CH340 → STM32 USART1 PA9/PA10
 不接 40-pin 或 H1。端口默认设为 `auto`：优先 `C5_HOST_PORT`、`/dev/c5-host`
 和唯一 CH340 `/dev/serial/by-id/...`，最后才接受唯一 `/dev/ttyUSB*`。多个串口时
 用环境变量或 `--port` 指定。打开前会撤销 DTR/RTS，仍须实测核心板自动下载电路是否
-出现复位瞬态。USART2 PA2/PA3 保留扩展，不再依赖 UART7 overlay。
+出现复位瞬态。2026-08-29 实测打开 CH340 后立即 QUERY 会超时，等待 2 秒可稳定返回，
+因此 MotionLink 统一在打开后等待 2 秒再允许事务。USART2 PA2/PA3 保留扩展，不再
+依赖 UART7 overlay。
+
+运动服务预检同样使用 `auto`，因此只有一只 CH340 时可更换 Orange Pi USB 口；发现
+多只 CH340 时拒绝猜测，必须设置 `C5_HOST_PORT`。端口出现后仍须通过 C5 QUERY，
+失败不会 ARM。
 
 ## 本机测试
 
@@ -75,6 +87,10 @@ ls -l /dev/serial/by-id/ /dev/ttyUSB* 2>/dev/null
 ```bash
 python3 motion_cli.py move --vx 100 --duration 0.5 --execute
 ```
+
+2026-08-29 用户架空观察：修复两根后轮信号线并重新插入 CH340 后，`vx=200`、2 秒
+测试四轮均动作；协议依次返回 QUERY、ARM、MOVING 和最终 DISARMED/STOPPED。该结果
+只验收低速架空链路，不代表下地守门、断联停车或方向标定完成。
 
 `main.py` 与 CLI 使用按解析后设备路径生成的 `/tmp` 独占锁，不能同时打开运动串口。
 固定帧定义见[通信协议](通信协议.md)，服务部署见[开机自启动](开机自启动使用说明.md)。
@@ -161,8 +177,49 @@ python3 main.py --headless --mode goalkeeper-test \
 
 该模式接入相机、RKNN、球/球门跟踪和 Phase 5C 三轴候选，但显式跳过
 `open_motion_link()`，不 ARM、不发送底盘命令。每帧 CSV 包含采集/处理时间、检测框、
-候选三轴、状态机输出、原因和推板意图，可作为后续回放输入。推板仍只有
-`IDLE/CYCLE` 意图，没有串口实现或硬件动作。
+候选三轴、状态机输出、原因和推板意图，可作为后续回放输入。该模式仍不把
+`IDLE/CYCLE` 自动转成推板硬件动作。
+
+显式运动版使用独立模式：
+
+```bash
+python3 main.py --headless --mode goalkeeper-motion --execute \
+  --duration 180 --goalkeeper-motion-profile fast-lateral
+```
+
+`fast-lateral` 将横移、前后和转向预算设为 `650/100/250`：优先快速侧向拦截，限制
+缺少绝对定位时的前后追球，其次保持对方球门在视野内。连续三次可靠非零决策后才
+ARM；丢球门、观测过期、近距挡球、零决策、串口异常或到时立即 STOP。推板仍只记录
+意图，不自动执行。运动自启动使用独立且默认禁用的
+`c5-goalkeeper-motion.service`，详见[开机自启动说明](开机自启动使用说明.md)。
+
+若 STM32 已因 HOST 安全超时解除 ARM，下一次 TWIST 的 `NOT_ARMED` 不会直接结束整个
+会话：运行层先保持 STOP、清空发送状态并重新累计三帧可靠观测，之后才允许再次 ARM。
+超时、串口读写、协议和其他状态错误仍按致命链路故障退出并 STOP。
+
+没有实物球门时，可用显式测试参数替换“对方球门”检测框；四个值依次为归一化中心
+`x/y` 和宽/高：
+
+```bash
+python3 main.py --headless --mode goalkeeper-motion --execute --duration 10 \
+  --goalkeeper-motion-profile fast-lateral \
+  --goalkeeper-synthetic-goal 0.65 0.40 0.50 0.50
+```
+
+该参数忽略真实球门检测，但仍使用真实球检测；框必须完全位于画面内。它只用于架空、
+有界测试，不代表球门身份或场地定位。仓库及板端自启动单元均不包含该参数。
+
+推板备用链路独立于守门主循环和底盘 MotionLink。默认命令只查询显式稳定设备：
+
+```bash
+python3 pusher_cli.py --port /dev/c5-pusher query
+python3 pusher_cli.py --port /dev/c5-pusher stop
+```
+
+`cycle` 还必须同时提供 `--execute`、已确认行程/速度/加速度/伸出方向，以及空闲时
+`hold` 锁轴或 `release` 松轴的明确选择。软件另有限制：最多 3200 脉冲、300 RPM、
+10 次往复，每段最长 10 秒。实物参数未确认前不要运行。备用链路只使用明确端口，
+不会自动选择 `/dev/ttyUSB*`，也尚未由 `goalkeeper-test` 调用。
 
 当前运行时把模型的 `goal` 检测当作调用方提供的“对方球门”观测；代码本身不能验证
 球门身份。相对球门像素约束不等于己方禁区定位。

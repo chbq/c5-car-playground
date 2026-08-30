@@ -26,8 +26,13 @@ from ball_strafe_control import (
 from football_tracker import tracker
 from func import myFunc
 from goal_tracker import goal_tracker
-from goalkeeper_log import GoalkeeperCsvLogger
-from goalkeeper_runtime import GoalkeeperDryRunSession
+from goalkeeper_log import GoalkeeperCsvLogger, make_default_log_path
+from goalkeeper_policy import GoalkeeperConfig, GoalkeeperPolicy
+from goalkeeper_runtime import (
+    GoalkeeperDryRunSession,
+    GoalkeeperMotionSession,
+    SyntheticGoalSpec,
+)
 from motion_link import MotionLink, MotionLinkError
 from mpu6050_imu import imu, get_pitch, get_roll, get_yaw
 from rknnpool import rknnPoolExecutor
@@ -57,6 +62,66 @@ BALL_MOTION_MODES = (
     "ball-yaw-test", "ball-strafe-test", "ball-follow-test",
     "ball-fov-test", "ball-search-test")
 GOALKEEPER_MODE = "goalkeeper-test"
+GOALKEEPER_MOTION_MODE = "goalkeeper-motion"
+GOALKEEPER_MOTION_MAX_DURATION = 600.0
+GOALKEEPER_MOTION_PROFILES = {
+    "balanced": {
+        "candidate": {
+            "deadband": 0.10,
+            "min_confidence": 0.35,
+            "vx_gain": 1000.0,
+            "min_vx": 250,
+            "max_vx": 700,
+            "max_vx_step": 120,
+            "vx_sign": -1,
+            "target_box_ratio": 0.35,
+            "distance_deadband": 0.05,
+            "vy_gain": 2500.0,
+            "min_vy": 100,
+            "max_vy": 220,
+            "max_vy_step": 50,
+            "vy_sign": 1,
+            "yaw_gain": 260.0,
+            "min_wz": 50,
+            "max_wz": 220,
+            "max_wz_step": 30,
+            "yaw_sign": 1,
+        },
+        "policy": {
+            "max_intercept_vx": 500,
+            "max_intercept_vy": 100,
+            "max_intercept_wz": 220,
+        },
+    },
+    "fast-lateral": {
+        "candidate": {
+            "deadband": 0.08,
+            "min_confidence": 0.35,
+            "vx_gain": 1200.0,
+            "min_vx": 300,
+            "max_vx": 900,
+            "max_vx_step": 180,
+            "vx_sign": -1,
+            "target_box_ratio": 0.35,
+            "distance_deadband": 0.06,
+            "vy_gain": 2200.0,
+            "min_vy": 100,
+            "max_vy": 240,
+            "max_vy_step": 50,
+            "vy_sign": 1,
+            "yaw_gain": 320.0,
+            "min_wz": 60,
+            "max_wz": 300,
+            "max_wz_step": 40,
+            "yaw_sign": 1,
+        },
+        "policy": {
+            "max_intercept_vx": 650,
+            "max_intercept_vy": 100,
+            "max_intercept_wz": 250,
+        },
+    },
+}
 
 # Phase 5 后续: goal (球门) 检测与几何（干运行，不产生运动）。
 GOAL_GEOMETRY_PERIOD = 0.2    # 几何计算节流周期（秒），约 5 Hz
@@ -197,7 +262,8 @@ def build_arg_parser():
         description="RK3588 football inference and bounded C5 motion tests")
     parser.add_argument(
         "--mode",
-        choices=("idle", "inference", "goal-test", GOALKEEPER_MODE) +
+        choices=("idle", "inference", "goal-test", GOALKEEPER_MODE,
+                 GOALKEEPER_MOTION_MODE) +
         BALL_MOTION_MODES,
         default="idle",
         help="idle/inference never move; ball tests are dry-run unless --execute")
@@ -257,6 +323,17 @@ def build_arg_parser():
     parser.add_argument(
         "--goalkeeper-log",
         help="goalkeeper-test CSV path; default logs/goalkeeper-<time>.csv")
+    parser.add_argument(
+        "--dry-run-duration", type=float,
+        help="goalkeeper-test logging limit in seconds (60..14400)")
+    parser.add_argument(
+        "--goalkeeper-motion-profile",
+        choices=tuple(GOALKEEPER_MOTION_PROFILES), default="fast-lateral",
+        help="goalkeeper-motion axis weighting preset")
+    parser.add_argument(
+        "--goalkeeper-synthetic-goal", nargs=4, type=float,
+        metavar=("CENTER_X", "CENTER_Y", "WIDTH", "HEIGHT"),
+        help="explicit test-only normalized opponent-goal box")
     parser.add_argument("--fov-error-alpha", type=float)
     parser.add_argument("--fov-rate-alpha", type=float)
     parser.add_argument("--fov-prediction-horizon", type=float)
@@ -298,6 +375,8 @@ def parse_args(argv=None):
             defaults = BALL_FOV_DEFAULTS
         else:
             defaults = BALL_FOLLOW_DEFAULTS
+    elif args.mode == GOALKEEPER_MOTION_MODE:
+        defaults = {}
     else:
         defaults = BALL_PROFILES[args.profile]
 
@@ -308,8 +387,11 @@ def parse_args(argv=None):
         elif getattr(args, name) is None:
             setattr(args, name, value)
 
-    if args.execute and args.mode not in BALL_MOTION_MODES:
-        parser.error("--execute is only valid with a ball motion test mode")
+    motion_modes = BALL_MOTION_MODES + (GOALKEEPER_MOTION_MODE,)
+    if args.execute and args.mode not in motion_modes:
+        parser.error("--execute is only valid with an explicit motion mode")
+    if args.mode == GOALKEEPER_MOTION_MODE and not args.execute:
+        parser.error("goalkeeper-motion requires --execute")
     if args.continuous and args.mode != "ball-search-test":
         parser.error("--continuous requires --mode ball-search-test")
     if args.continuous and not args.execute:
@@ -318,8 +400,17 @@ def parse_args(argv=None):
             args.mode not in (
                 "ball-follow-test", "ball-fov-test", "ball-search-test")):
         parser.error("--control-log requires a ball follow mode")
-    if args.goalkeeper_log and args.mode != GOALKEEPER_MODE:
-        parser.error("--goalkeeper-log requires --mode goalkeeper-test")
+    if (args.goalkeeper_log and
+            args.mode not in (GOALKEEPER_MODE, GOALKEEPER_MOTION_MODE)):
+        parser.error("--goalkeeper-log requires a goalkeeper mode")
+    if (args.goalkeeper_synthetic_goal is not None and
+            args.mode not in (GOALKEEPER_MODE, GOALKEEPER_MOTION_MODE)):
+        parser.error("--goalkeeper-synthetic-goal requires a goalkeeper mode")
+    if args.dry_run_duration is not None:
+        if args.mode != GOALKEEPER_MODE:
+            parser.error("--dry-run-duration requires --mode goalkeeper-test")
+        if not 60.0 <= args.dry_run_duration <= 14400.0:
+            parser.error("--dry-run-duration must be in [60, 14400]")
     if explicit_fov and args.mode not in ("ball-fov-test", "ball-search-test"):
         parser.error("FOV parameters require a FOV ball mode")
     if explicit_search and args.mode != "ball-search-test":
@@ -329,11 +420,17 @@ def parse_args(argv=None):
     if args.mode in BALL_MOTION_MODES:
         if not 1.0 <= args.duration <= BALL_TEST_MAX_DURATION:
             parser.error("--duration must be in [1, 30] for ball motion tests")
+    elif args.mode == GOALKEEPER_MOTION_MODE:
+        if args.duration is None:
+            args.duration = 180.0
+        if not 5.0 <= args.duration <= GOALKEEPER_MOTION_MAX_DURATION:
+            parser.error("--duration must be in [5, 600] for goalkeeper-motion")
     elif args.profile != "standard":
         parser.error("ground profiles require --mode ball-yaw-test")
     if args.headless and args.mode == "idle":
         parser.error("--headless requires an inference mode")
-    if not 0.5 <= args.lost_timeout <= 2.0:
+    if (args.mode in BALL_MOTION_MODES and
+            not 0.5 <= args.lost_timeout <= 2.0):
         parser.error("--lost-timeout must be in [0.5, 2.0]")
 
     try:
@@ -350,7 +447,7 @@ def parse_args(argv=None):
                 max_step=args.max_vy_step,
                 lateral_sign=args.lateral_sign,
             ).validate()
-        else:
+        elif args.mode != GOALKEEPER_MOTION_MODE:
             BallYawConfig(
                 deadband=args.deadband,
                 min_confidence=args.min_confidence,
@@ -359,6 +456,13 @@ def parse_args(argv=None):
                 max_wz=args.max_wz,
                 yaw_sign=args.yaw_sign,
             ).validate()
+        else:
+            profile = GOALKEEPER_MOTION_PROFILES[
+                args.goalkeeper_motion_profile]
+            BallFollowConfig(**profile["candidate"]).validate()
+            GoalkeeperConfig(**profile["policy"]).validate()
+        if args.goalkeeper_synthetic_goal is not None:
+            SyntheticGoalSpec(*args.goalkeeper_synthetic_goal).validate()
     except ValueError as error:
         parser.error(str(error))
     return args
@@ -647,6 +751,24 @@ def make_ball_follow_session(args, motion_link):
     )
 
 
+def make_goalkeeper_motion_session(args, motion_link, logger=None):
+    """Build the selected goalkeeper weighting profile around MotionLink."""
+    profile = GOALKEEPER_MOTION_PROFILES[args.goalkeeper_motion_profile]
+    candidate = BallFollowController(BallFollowConfig(**profile["candidate"]))
+    policy = GoalkeeperPolicy(GoalkeeperConfig(**profile["policy"]))
+    return GoalkeeperMotionSession(
+        motion_link,
+        policy=policy,
+        candidate_controller=candidate,
+        logger=logger,
+        control_period=BALL_CONTROL_PERIOD,
+        acquire_cycles=BALL_ACQUIRE_CYCLES,
+        synthetic_goal=(
+            SyntheticGoalSpec(*args.goalkeeper_synthetic_goal)
+            if args.goalkeeper_synthetic_goal is not None else None),
+    )
+
+
 def run(args):
     cap = None
     pool = None
@@ -771,14 +893,40 @@ def run(args):
                     f"min_exit_error={args.search_min_exit_error:.2f} "
                     f"continuous_rearm={args.continuous}")
             print(f"[BALL] 逐周期 CSV: {control_logger.path}")
-        elif args.mode == GOALKEEPER_MODE:
-            goalkeeper_log_path = args.goalkeeper_log or os.path.join(
-                "logs", time.strftime("goalkeeper-%Y%m%d-%H%M%S.csv"))
+        elif args.mode in (GOALKEEPER_MODE, GOALKEEPER_MOTION_MODE):
+            goalkeeper_log_path = (
+                args.goalkeeper_log or make_default_log_path())
             goalkeeper_logger = GoalkeeperCsvLogger(goalkeeper_log_path)
-            goalkeeper_session = GoalkeeperDryRunSession(
-                logger=goalkeeper_logger)
-            print("[GK] 解析式守门员干运行：球门锚定、看球、拦截、近距挡球意图")
-            print("[GK] 推板仅记录 IDLE/CYCLE 意图；当前没有串口实现或电机动作")
+            if args.mode == GOALKEEPER_MOTION_MODE:
+                goalkeeper_session = make_goalkeeper_motion_session(
+                    args, motion_link, logger=goalkeeper_logger)
+                profile = GOALKEEPER_MOTION_PROFILES[
+                    args.goalkeeper_motion_profile]["policy"]
+                print(
+                    "[GK] 运动版：连续可靠锚定后 ARM；丢锚、零决策、"
+                    "近距挡球或异常立即 STOP")
+                print(
+                    f"[GK] profile={args.goalkeeper_motion_profile} "
+                    f"duration={args.duration:.0f}s "
+                    f"limits=({profile['max_intercept_vx']},"
+                    f"{profile['max_intercept_vy']},"
+                    f"{profile['max_intercept_wz']})")
+            else:
+                goalkeeper_session = GoalkeeperDryRunSession(
+                    logger=goalkeeper_logger,
+                    synthetic_goal=(
+                        SyntheticGoalSpec(*args.goalkeeper_synthetic_goal)
+                        if args.goalkeeper_synthetic_goal is not None
+                        else None))
+                print("[GK] 解析式守门员干运行：球门锚定、看球、拦截、近距挡球意图")
+            if args.goalkeeper_synthetic_goal is not None:
+                values = ",".join(
+                    f"{value:.2f}"
+                    for value in args.goalkeeper_synthetic_goal)
+                print(
+                    f"[GK] TEST ONLY：使用合成对方球门框 ({values})；"
+                    "忽略真实球门检测")
+            print("[GK] 推板仅记录 IDLE/CYCLE 意图；当前不驱动推板")
             print(f"[GK] 可回放 CSV: {goalkeeper_logger.path}")
         else:
             if args.mode == "goal-test":
@@ -799,6 +947,18 @@ def run(args):
 
         while cap.isOpened():
             now = time.monotonic()
+            if (goalkeeper_session is not None and
+                    args.dry_run_duration is not None and
+                    now - test_start >= args.dry_run_duration):
+                print(
+                    f"[GK] dry-run 达到 {args.dry_run_duration:.0f}s 上限，"
+                    "正常退出")
+                break
+            if (args.mode == GOALKEEPER_MOTION_MODE and
+                    now - test_start >= args.duration):
+                goalkeeper_session.stop("duration")
+                print(f"[GK] 运动版达到 {args.duration:.0f}s 上限，已 STOP")
+                break
             if (ball_session is not None and
                     not args.continuous and
                     now - test_start >= args.duration):
@@ -976,6 +1136,9 @@ def run(args):
             control_logger.close()
         if goalkeeper_logger is not None:
             goalkeeper_logger.close()
+        if (goalkeeper_session is not None and
+                isinstance(goalkeeper_session, GoalkeeperMotionSession)):
+            goalkeeper_session.stop("exit")
         if (motion_link is not None and
                 (ball_session is None or not ball_session.execute)):
             motion_link.safe_stop()

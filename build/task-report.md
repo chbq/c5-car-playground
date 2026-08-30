@@ -691,3 +691,196 @@ Date: 2026-08-26
 - Eighteen focused policy/runtime tests passed. The full RK host suite passed
   111 tests and `compileall`; no board connection, serial open, ARM, firmware
   flash, chassis command or pusher command was used.
+
+## ZDT pusher stepper evidence audit
+
+Date: 2026-08-26
+
+- Moved the user-supplied ZDT XS second-generation closed-loop stepper bundle
+  into ignored `reference/zdt-xs2-stepper/`: 253 files and 543651627 bytes.
+  The source directory was removed only after the destination count and size
+  matched. Vendor PDFs, tools, firmware and examples remain unmodified.
+- Cross-checked the X42S V1.0.5 manual, Modbus V1.0.1 manual and Raspberry Pi
+  example. The default Emm free protocol is 115200 8N1, address 1 and a fixed
+  `0x6B` suffix; enable, position, status and immediate-stop frames agree.
+- Recommended a separately named Orange Pi USB serial link for the pusher so
+  it cannot be confused with the STM32 CH340 MotionLink. RS485 is preferred
+  for vehicle wiring, subject to confirming the installed communication board.
+- No vendor executable or firmware was run. No board, serial adapter, motor or
+  power supply was connected, and no enable or motion command was sent.
+
+## Orange Pi ZDT pusher backup controller
+
+Date: 2026-08-27
+
+- Added pure Emm free-protocol framing for status, enable, relative-current
+  position and immediate-stop commands, with exact vendor-frame tests.
+- Added a synchronous pusher link that requires an explicit device path,
+  applies a per-port lock and never falls back to an arbitrary `ttyUSB` node.
+- Added a bounded manual cycle runner and CLI. Motion requires `--execute` plus
+  explicit stroke, speed, acceleration, direction and hold/release behavior;
+  missing `--execute` does not open the serial link.
+- Stop is attempted after enable acknowledgement loss, movement error, stall,
+  timeout, normal completion and context exit. Stall/protection flags prevent
+  another segment from starting.
+- The backup controller remains separate from `main.py` and `PusherIntent`.
+  Seventeen focused tests and the full 128-test RK suite passed; tests used
+  fake serial/link objects only. No Orange Pi deployment, serial device,
+  power supply or motor was used.
+
+## Offline headless goalkeeper dry-run service
+
+Date: 2026-08-27
+
+- Changed `c5-goalkeeper.service` from graphical idle startup to a
+  network-independent `multi-user.target` service running only
+  `main.py --headless --mode goalkeeper-test`.
+- Added a read-only preflight: a missing model fails immediately and `/dev/video0`
+  may appear for up to 30 seconds before startup fails. It does not open the
+  camera, MotionLink or pusher serial port.
+- Updated the installer so generated units preserve the fixed dry-run arguments
+  and selected Python path. The unit contains no `--execute`, `--continuous`,
+  display or network dependency.
+- Added a goalkeeper-only 7200-second normal-exit limit so unattended
+  frame-rate CSV logging cannot continue indefinitely; normal completion is
+  not restarted by `Restart=on-failure`.
+- Added a random run identifier to default goalkeeper CSV names so repeated or
+  incorrect offline wall-clock values cannot overwrite an earlier boot log.
+- Added static unit/installer checks and preflight tests. No service was
+  installed, enabled or started on the Orange Pi. The full RK suite passed 134
+  tests, Python `compileall`, Bash syntax parsing and `git diff --check`; no
+  hardware command was sent.
+
+## Orange Pi dry-run deployment
+
+Date: 2026-08-27
+
+- Deployed to the new directory
+  `/home/orangepi/Desktop/c5-goalkeeper-phase6-dryrun-20260827`; preserved all
+  earlier source directories and backed up the previous systemd unit under
+  `/home/orangepi/Desktop/c5-goalkeeper-deploy-backup-20260827-1457`.
+- Found and fixed CRLF line endings that made board-side Bash reject
+  `autostart.sh`. Added LF attributes and a regression test. The rebuilt archive
+  matched SHA-256 `5c4e72d967d6e29ab7b95ce2416d742a878640a6aab922ad193fa019c131dba3`
+  on both hosts.
+- Board verification passed Python `compileall`, Bash parsing, 135 tests and
+  preflight against `football_8_16_100.rknn` plus `/dev/video0`.
+- Installed and enabled the network-independent dry-run unit. A 20-second
+  start/stop test loaded RKNN Runtime 2.3.2, processed 1280x720 MJPG at about
+  28-30 FPS and wrote a 442-line replay CSV. With no opponent goal detected,
+  the policy stayed `ANCHORING`, emitted `(0,0,0)` and kept the pusher `IDLE`.
+- The service is now enabled and inactive after the manual stop. No MotionLink,
+  ARM, chassis command, pusher serial, reboot or firmware flash was used.
+  Offline reboot and long-duration logging remain unverified.
+
+## Explicit goalkeeper motion variant
+
+Date: 2026-08-27
+
+- Added `goalkeeper-motion`, which wraps the same logged policy with a 20 Hz
+  MotionLink executor. It requires three consecutive goal-relative nonzero
+  decisions before ARM and sends STOP on invalid/expired/zero decisions, close
+  block, link error, duration expiry and process exit.
+- Added `balanced` and `fast-lateral` profiles. The fast profile allocates the
+  full axis budget as vx/vy/wz `650/100/250`: lateral interception first, goal
+  visibility yaw second and unlocalized depth motion last.
+- Added a separate motion systemd unit with a 180-second limit, no restart,
+  `/dev/c5-host` preflight, dry-run conflict, explicit enable file and STOP
+  fallback. Its installer leaves the unit disabled and removes the enable file;
+  enabling requires the literal confirmation token.
+- The full RK suite passed 142 tests plus Python compile and both Bash syntax
+  checks locally and on the board. The motion unit was installed on the board
+  but remains disabled and inactive with no enable file and no `/dev/c5-host`;
+  the dry-run unit remains enabled. No ARM or chassis command was sent.
+- Motion preflight now waits up to 30 seconds for `/dev/c5-host`, matching the
+  camera enumeration guard. A missing device fails once because the motion unit
+  has `Restart=no`; network availability is not part of startup.
+- The connected STM32 CH340 enumerated as the only `/dev/ttyUSB0`. QUERY through
+  its by-id path returned `HOST/DISARMED/STOPPED/errors=0`. Because this CH340
+  exposes no unique serial number, a board-local udev rule binds physical path
+  `platform-fc8c0000.usb-usb-0:1:1.0` to `/dev/c5-host`; the cable must return to
+  the same Orange Pi USB port.
+- After explicit user authorization for offline autonomous startup, the dry-run
+  unit was disabled and the motion unit enabled with its gate present. Final
+  state was motion `enabled/inactive/MainPID=0`; no service start, ARM or TWIST
+  occurred during configuration. The first offline boot motion test remains a
+  raised-chassis physical acceptance step.
+
+## Port-independent unique CH340 preflight
+
+Date: 2026-08-29
+
+- Restored board management over a direct Ethernet link using
+  `169.254.77.3/16` on Windows and `169.254.77.2/16` on the Orange Pi. This
+  avoids an aTrust `/32` route that captured the earlier `192.168.50.2`
+  destination; aTrust configuration was not changed.
+- Found that the HOST CH340 had moved from physical path
+  `platform-fc8c0000.usb-usb-0:1:1.0` to
+  `platform-fc800000.usb-usb-0:1.2:1.0`. The board-local alias rule was backed
+  up and updated, restoring `/dev/c5-host -> ttyUSB0`.
+- Changed the motion service preflight and enable check to use the existing
+  conservative `auto` resolver. One CH340 may now move between USB ports; zero
+  devices wait and fail, while multiple devices fail unless `C5_HOST_PORT` is
+  explicit. The application still requires a valid C5 QUERY before ARM.
+- Local and board RK suites passed 146 tests plus Python `compileall` and Bash
+  syntax. A forced board-side resolution with `/dev/c5-host` ignored selected
+  the unique `/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`.
+- Updated the deployed source and installed unit without starting it. Final
+  state remains motion `enabled/failed/MainPID=0`, dry-run disabled/inactive,
+  and the explicit motion gate present. No ARM, TWIST, firmware flash or motor
+  action occurred.
+- CH340 enumeration is stable and unclaimed. Immediate CLI QUERY timed out,
+  while a two-second post-open wait repeatedly returned
+  `HOST/DISARMED/STOPPED/errors=0`; MotionLink now applies that settle delay
+  centrally before allowing a transaction. The low-speed motion command did
+  not reach ARM before this correction and produced no wheel command.
+- After the correction, the bounded `vx=200` two-second raised-chassis command
+  completed QUERY, ARM, MOVING and automatic DISARMED/STOPPED acknowledgements.
+  The user found two disconnected rear-wheel signal leads, reconnected them,
+  and then observed all four wheels moving. This is user-observed low-speed
+  link acceptance only; ground motion, direction calibration, HOST-loss stop
+  timing and the full goalkeeper service remain unverified.
+
+## Raised full-service and synthetic-goal checks
+
+Date: 2026-08-29
+
+- Ran the enabled motion service on the raised chassis for its full 180-second
+  bound. With no opponent goal detected it remained in zero-speed `ANCHORING`,
+  reached the duration STOP, and an independent QUERY returned
+  `HOST/DISARMED/STOPPED/errors=0`.
+- Added an explicit normalized synthetic-opponent-goal box for goalkeeper test
+  modes. It replaces only the goal observation, is rejected outside goalkeeper
+  modes, is absent from both systemd units, and does not synthesize the ball.
+- Corrected the synthetic observation timestamp to the processing time so a
+  six-worker inference delay cannot make the test fixture immediately stale.
+  Local and board suites passed 148 tests plus Python `compileall`.
+- A centered synthetic-goal 30-second board run recorded 890 frames: 547
+  `CLOSE_BLOCK`, 341 `BALL_LOST`, and 2 `ANCHORING`. The real ball boxes were
+  25,519--90,250 px2, so the close-block zero command dominated; one isolated
+  nonzero decision did not produce sustained motion. The run ended with STOP
+  and QUERY confirmed `HOST/DISARMED/STOPPED/errors=0`.
+- These checks validate bounded execution and relative-observation behavior
+  only. Goal identity, field localization, threshold calibration and ground
+  goalkeeper behavior remain unverified. The pusher was not connected or run.
+- A second raised 10-second run placed the synthetic goal at normalized
+  `(0.65,0.40,0.50,0.50)`. It recorded 294 frames and 103 nonzero decisions,
+  with up to 10 consecutive nonzero frames. The user observed small wheel
+  motion. Real ball detections still alternated 176 `CLOSE_BLOCK` and 116
+  `BALL_LOST` frames, so STOP interruptions limited the physical amplitude.
+  Duration STOP succeeded and QUERY again returned
+  `HOST/DISARMED/STOPPED/errors=0`.
+- An isolated run with the camera covered and synthetic goal
+  `(0.80,0.40,0.30,0.50)` exposed a firmware timeout race: a later TWIST was
+  rejected as `NOT_ARMED`, and the original runtime treated that safe disarm as
+  a fatal link error. Final QUERY was still DISARMED/STOPPED with zero errors.
+- Added a typed recoverable not-armed result. The motion session now issues
+  STOP, clears its sent state and requires a new consecutive-observation gate
+  before re-arming; all other link errors remain fatal. Local and board suites
+  passed 150 tests plus Python `compileall`.
+- The repeated raised 10-second isolated run completed normally: 306 logged
+  frames, 304 continuous `RECOVER` decisions at `wz=132`, duration STOP, and a
+  final independent `HOST/DISARMED/STOPPED/errors=0` QUERY. The service remained
+  inactive and the pusher was not run. The user observed clearly stronger and
+  more continuous wheel motion than the interrupted first run and ended the
+  raised-chassis acceptance session.

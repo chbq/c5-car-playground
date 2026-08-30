@@ -20,6 +20,7 @@
 | [ball-strafe-control.md](ball-strafe-control.md) | 球心像素到麦轮横移的 Phase 5B 闭环 |
 | [ball-follow-control.md](ball-follow-control.md) | 右侧相机三轴球控与 CSV Phase 5C |
 | [goalkeeper-behavior.md](goalkeeper-behavior.md) | Phase 5D 视野保护边界与 Phase 6 自动守门设计 |
+| [pusher-stepper.md](pusher-stepper.md) | ZDT 闭环步进电机协议、接线边界与推板验收顺序 |
 | [handoff-phase6.md](handoff-phase6.md) | 跨用户恢复、外部资产和 Phase 6 新任务边界 |
 
 ## 当前基线

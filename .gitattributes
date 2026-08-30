@@ -1,3 +1,7 @@
 # Preserve CubeMX/ST generated files exactly as emitted. Their upstream sources
 # contain intentional trailing whitespace and blank EOF lines.
 target/c5-firmware/** -whitespace
+
+# Linux deployment entrypoints must remain executable by board-side tools.
+*.sh text eol=lf
+*.service text eol=lf

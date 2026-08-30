@@ -1,0 +1,23 @@
+[Unit]
+Description=C5 RK3588 Goalkeeper Explicit Motion
+After=local-fs.target
+Conflicts=c5-goalkeeper.service
+ConditionPathExists=/etc/c5-goalkeeper-motion.enable
+StartLimitIntervalSec=120
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=orangepi
+Group=orangepi
+WorkingDirectory=/home/orangepi/c5-car-playground/target/rk3588-goalkeeper
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/home/orangepi/miniconda3/envs/yolov8/bin/python3 /home/orangepi/c5-car-playground/target/rk3588-goalkeeper/service_preflight.py --model ./rknnModel/football_8_16_100.rknn --camera /dev/video0 --host auto --wait 30
+ExecStart=/home/orangepi/miniconda3/envs/yolov8/bin/python3 /home/orangepi/c5-car-playground/target/rk3588-goalkeeper/main.py --headless --mode goalkeeper-motion --execute --duration 180 --goalkeeper-motion-profile fast-lateral
+ExecStopPost=-/home/orangepi/miniconda3/envs/yolov8/bin/python3 /home/orangepi/c5-car-playground/target/rk3588-goalkeeper/motion_cli.py stop
+Restart=no
+KillSignal=SIGTERM
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

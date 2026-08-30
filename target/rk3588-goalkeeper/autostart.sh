@@ -1,6 +1,6 @@
 #!/bin/bash
 # ============================================================
-# 足球检测开机自启动管理脚本（香橙派 RK3588）
+# 守门员 headless dry-run 开机自启动管理脚本（香橙派 RK3588）
 #
 # 首次使用（在香橙派上，本仓库目录下执行）:
 #   chmod +x autostart.sh
@@ -70,7 +70,11 @@ case "$1" in
         esac
         # 检查 main.py 引用的模型文件是否存在，避免装出一个开机就崩溃循环的服务
         model=$(sed -n 's/^MODEL_PATH = "\.\/\(.*\)"$/\1/p' "$SCRIPT_DIR/main.py")
-        if [ -n "$model" ] && [ ! -f "$SCRIPT_DIR/$model" ]; then
+        if [ -z "$model" ]; then
+            echo "✗ 无法从 main.py 解析 MODEL_PATH"
+            exit 1
+        fi
+        if [ ! -f "$SCRIPT_DIR/$model" ]; then
             echo "✗ 模型文件不存在: $SCRIPT_DIR/$model"
             echo "  请先把模型放进 rknnModel/ 目录再安装"
             exit 1
@@ -100,17 +104,23 @@ case "$1" in
         else
             echo "✓ 使用 conda 环境 python: $PY"
         fi
+        if [ ! -f "$SCRIPT_DIR/service_preflight.py" ]; then
+            echo "✗ 找不到 $SCRIPT_DIR/service_preflight.py"
+            exit 1
+        fi
         # 先在临时文件生成 unit（修正仓库路径 + python 路径），成功后再安装，
         # 避免中途失败在 /etc/systemd/system 留下空文件/半截文件
         tmp=$(mktemp) || exit 1
         sed -e "s|/home/orangepi/c5-car-playground/target/rk3588-goalkeeper|$SCRIPT_DIR|g" \
-            -e "s|^ExecStart=.*|ExecStart=$PY $SCRIPT_DIR/main.py|" \
+            -e "s|^ExecStartPre=.*|ExecStartPre=$PY $SCRIPT_DIR/service_preflight.py --model ./$model --camera /dev/video0 --wait 30|" \
+            -e "s|^ExecStart=.*|ExecStart=$PY $SCRIPT_DIR/main.py --headless --mode goalkeeper-test --dry-run-duration 7200|" \
             "$UNIT_SRC" > "$tmp" || { rm -f "$tmp"; echo "✗ 生成 unit 文件失败"; exit 1; }
         sudo install -m 644 "$tmp" "$UNIT_DST" || { rm -f "$tmp"; echo "✗ 写入 $UNIT_DST 失败"; exit 1; }
         rm -f "$tmp"
         sudo systemctl daemon-reload || { echo "✗ daemon-reload 失败"; exit 1; }
         sudo systemctl enable "$SERVICE" || { echo "✗ 开启自启失败"; exit 1; }
-        echo "✓ 安装完成，开机自启已开启（重启后自动运行 main.py）"
+        echo "✓ 安装完成，开机自启已开启（headless goalkeeper-test dry-run）"
+        echo "  安全边界：不打开 MotionLink，不 ARM，不控制底盘或推板"
         echo "  现在就启动: ./autostart.sh start"
         ;;
     status)

@@ -27,13 +27,18 @@ class MotionLinkError(RuntimeError):
     pass
 
 
+class MotionLinkNotArmedError(MotionLinkError):
+    """The STM32 safely disarmed before accepting the next TWIST."""
+
+
 class MotionLink:
     """Synchronous command API backed by a serial reader thread."""
 
     def __init__(self, port=AUTO_PORT, baudrate=115200,
                  ack_timeout=0.2, status_timeout=0.2,
                  status_callback=None, serial_factory=None,
-                 lock_path="auto"):
+                 lock_path="auto", open_settle_seconds=2.0,
+                 sleep=time.sleep):
         self.port = port
         self.baudrate = baudrate
         self.ack_timeout = ack_timeout
@@ -41,6 +46,8 @@ class MotionLink:
         self.status_callback = status_callback
         self._serial_factory = serial_factory
         self._lock_path = lock_path
+        self._open_settle_seconds = open_settle_seconds
+        self._sleep = sleep
         self._serial = None
         self._resolved_port = None
         self._lock_file = None
@@ -132,6 +139,8 @@ class MotionLink:
                                             name="c5-motion-link",
                                             daemon=True)
             self._thread.start()
+            if self._open_settle_seconds > 0.0:
+                self._sleep(self._open_settle_seconds)
             return self
         except Exception:
             if self._serial is not None:
@@ -238,6 +247,10 @@ class MotionLink:
         if status.result != Result.OK or status.host_state != HostState.ARMED:
             with self._condition:
                 self._armed = False
+            if (status.result == Result.NOT_ARMED or
+                    status.host_state == HostState.DISARMED):
+                raise MotionLinkNotArmedError(
+                    "TWIST rejected because HOST is not armed")
             self._require_ok(status, "TWIST")
             raise MotionLinkError("TWIST acknowledgement disarmed HOST")
         return status

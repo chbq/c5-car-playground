@@ -1,7 +1,6 @@
 [Unit]
-Description=C5 RK3588 Goalkeeper Vision
-After=graphical.target
-Wants=graphical.target
+Description=C5 RK3588 Goalkeeper Headless Dry Run
+After=local-fs.target
 StartLimitIntervalSec=120
 StartLimitBurst=5
 
@@ -10,13 +9,13 @@ Type=simple
 User=orangepi
 Group=orangepi
 WorkingDirectory=/home/orangepi/c5-car-playground/target/rk3588-goalkeeper
-Environment=DISPLAY=:0
-Environment=XAUTHORITY=/home/orangepi/.Xauthority
 Environment=PYTHONUNBUFFERED=1
-ExecStartPre=/bin/sleep 8
-ExecStart=/home/orangepi/miniconda3/envs/yolov8/bin/python3 /home/orangepi/c5-car-playground/target/rk3588-goalkeeper/main.py
+ExecStartPre=/home/orangepi/miniconda3/envs/yolov8/bin/python3 /home/orangepi/c5-car-playground/target/rk3588-goalkeeper/service_preflight.py --model ./rknnModel/football_8_16_100.rknn --camera /dev/video0 --wait 30
+ExecStart=/home/orangepi/miniconda3/envs/yolov8/bin/python3 /home/orangepi/c5-car-playground/target/rk3588-goalkeeper/main.py --headless --mode goalkeeper-test --dry-run-duration 7200
 Restart=on-failure
 RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=10
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target

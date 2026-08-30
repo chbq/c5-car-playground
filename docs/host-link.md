@@ -20,8 +20,14 @@ Orange Pi HOST 共用 CH340，同一时刻只由一台 USB 主机连接并打开
 
 Linux 默认按以下顺序解析端口：`C5_HOST_PORT`、`/dev/c5-host`、唯一 CH340
 `/dev/serial/by-id/...`、唯一 `/dev/ttyUSB*`。多个 USB 串口时必须显式指定。
+运动服务预检与 MotionLink 共用该解析规则：只有一只 CH340 时允许换 USB 口；多只时
+拒绝启动并要求 `C5_HOST_PORT`，避免把未来推板串口当成底盘。`/dev/c5-host` 仍可作为
+固定部署别名，但不再是自启动的必要条件。端口解析只证明候选唯一，C5 QUERY 成功后
+才允许进入 ARM 门控。
 CH340 DTR/RTS 接入核心板自动下载电路；Python 在 `open()` 前撤销两信号，但驱动层
-瞬态仍须实测。USART2 PA2/PA3 保留为 3.3 V 扩展链路，不参与本阶段默认 HOST。
+仍存在启动瞬态。2026-08-29 实测立即 QUERY 超时、打开后等待 2 秒返回
+`HOST/DISARMED/STOPPED/errors=0`，MotionLink 已统一加入 2 秒稳定等待。USART2
+PA2/PA3 保留为 3.3 V 扩展链路，不参与本阶段默认 HOST。
 SSH 密钥登录是主要远程通道；NoMachine 只用于观察 OpenCV 窗口。
 
 ## 控制权与安全

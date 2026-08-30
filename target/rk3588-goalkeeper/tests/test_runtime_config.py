@@ -52,6 +52,23 @@ class RuntimeConfigTests(unittest.TestCase):
         self.assertIn("if args.mode == GOALKEEPER_MODE:", main_source)
         self.assertIn("不打开 MotionLink", main_source)
         self.assertIn("GoalkeeperDryRunSession", main_source)
+        self.assertIn("--dry-run-duration", main_source)
+        self.assertIn("args.mode != GOALKEEPER_MODE", main_source)
+
+    def test_goalkeeper_motion_profiles_prioritize_lateral_intercept(self):
+        constants = read_constants(PROJECT / "main.py")
+        self.assertEqual(
+            constants["GOALKEEPER_MOTION_MODE"], "goalkeeper-motion")
+        fast = constants["GOALKEEPER_MOTION_PROFILES"]["fast-lateral"]
+        limits = fast["policy"]
+        self.assertEqual(limits["max_intercept_vx"], 650)
+        self.assertEqual(limits["max_intercept_vy"], 100)
+        self.assertEqual(limits["max_intercept_wz"], 250)
+        self.assertGreater(
+            limits["max_intercept_vx"], limits["max_intercept_wz"])
+        self.assertGreater(
+            limits["max_intercept_wz"], limits["max_intercept_vy"])
+        self.assertLessEqual(sum(limits.values()), 1000)
 
     def test_latest_detection_thresholds_are_preserved(self):
         constants = read_constants(PROJECT / "func.py")

@@ -7,7 +7,11 @@ import unittest
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT))
 
-from motion_link import MotionLink, MotionLinkError  # noqa: E402
+from motion_link import (  # noqa: E402
+    MotionLink,
+    MotionLinkError,
+    MotionLinkNotArmedError,
+)
 from motion_protocol import (  # noqa: E402
     CommandType,
     ControlMode,
@@ -80,9 +84,22 @@ class MotionLinkTests(unittest.TestCase):
 
         link = MotionLink("fake", serial_factory=factory, lock_path=None,
                           ack_timeout=ack_timeout,
-                          status_timeout=status_timeout)
+                          status_timeout=status_timeout,
+                          open_settle_seconds=0.0)
         link.open()
         return link, lambda: fake
+
+    def test_open_waits_for_ch340_reset_settle(self):
+        delays = []
+        link = MotionLink(
+            "fake", serial_factory=FakeSerial, lock_path=None,
+            open_settle_seconds=2.0, sleep=delays.append)
+        try:
+            link.open()
+            self.assertEqual(delays, [2.0])
+            self.assertEqual(link.query().motion_state, MotionState.STOPPED)
+        finally:
+            link.close()
 
     def test_arm_twist_stop(self):
         link, get_fake = self.make_link()
@@ -104,6 +121,17 @@ class MotionLinkTests(unittest.TestCase):
             get_fake().respond = False
             with self.assertRaises(MotionLinkError):
                 link.arm()
+            self.assertFalse(link.is_armed)
+        finally:
+            link.close()
+
+    def test_stm32_timeout_reports_recoverable_not_armed(self):
+        link, get_fake = self.make_link()
+        try:
+            link.arm()
+            get_fake().armed = False
+            with self.assertRaises(MotionLinkNotArmedError):
+                link.set_twist(10, 0, 0)
             self.assertFalse(link.is_armed)
         finally:
             link.close()
