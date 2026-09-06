@@ -53,6 +53,12 @@ class MotionProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             unpack_status(bytes(damaged))
 
+        decelerating = Status(0x11, Result.OK, ControlMode.PS2,
+                              HostState.DISARMED,
+                              MotionState.DECELERATING, 0)
+        self.assertEqual(unpack_status(pack_status(decelerating)),
+                         decelerating)
+
     def test_stream_resynchronization(self):
         frame = pack_status(Status(1, Result.OK, ControlMode.HOST,
                                    HostState.DISARMED, MotionState.STOPPED, 2))

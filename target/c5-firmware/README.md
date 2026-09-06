@@ -5,12 +5,12 @@
 - 8 MHz HSE、72 MHz SYSCLK；
 - 上电保留 PA13/PA14 SWD，KEY1 长按后可切换 PS2；
 - USART1 PA9/PA10：CH340 USB HOST/串口下载，115200，中断接收；
-- USART2 PA2/PA3：H1 上的 3.3 V 扩展串口，当前不承载 HOST；
-- USART3 PB10/PB11：四轮单线总线；
+- USART2 PA2/PA3：保留，当前不承载电机；
+- USART3 PB10/PB11：经底板同步串口连接 M370 共享 TTL 电机总线；
 - PB13：低电平亮的 PS2 状态灯；
 - PA8：上拉、低有效 KEY1。
 
-上电主动广播停车，不自动运动。HOST 必须先 ARM 才接受非零 TWIST；150 ms 动作保持，200 ms 未刷新即停车并解除 ARM。PS2 与 HOST 互斥，STOP 始终有效。HOST 接收 ISR 只解析并投递事件，所有运动和串口发送均在主循环执行。
+上电发送一个 `AA` 帧，其中包含地址 1-4 的四条定址立即停车命令，不自动运动。HOST 必须先 ARM 才接受非零 TWIST；150 ms 动作保持，200 ms 未刷新即停车并解除 ARM。PS2 与 HOST 互斥，STOP 始终有效。HOST 接收 ISR 只解析并投递事件，所有运动和串口发送均在主循环执行。
 
 `App/` 保存手写逻辑；生成代码只在 `USER CODE` 区接入。CubeMX 生成后，`sync-keil-project.ps1` 会确定性加入 `App/Src/*.c` 和 `App/Inc`。
 

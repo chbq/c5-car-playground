@@ -364,3 +364,287 @@ STM32 QUERY/ARM/STOP and raised-chassis motion tests remain hardware work.
 
 Persistent `brltty-udev` handling, reboot verification, physical USB unplug
 and HOST/PS2 arbitration remain open. No ground-driving test was performed.
+
+## M370 TTL four-wheel migration
+
+Date: 2026-09-04
+
+- Replaced the retired ASCII DAT motor backend with M370 binary velocity,
+  immediate-stop and AA multi-motor frames.
+- Bound the motor transport to USART2 PA2/PA3 at 115200 8N1. USART1 remains the
+  CH340 HOST link; USART3 remains initialized but is not connected to the new
+  TTL distribution board.
+- Chose bring-up addresses 1/2/3/4 for LF/RF/LR/RR. These addresses and the
+  initial `+ - + -` installation polarity remain hardware-unverified.
+- Limited the initial software mapping to 300 RPM with 300 RPM/s acceleration.
+- Added the power-off wiring, one-motor-at-a-time addressing and raised-chassis
+  acceptance sequence. Gear ratio and the pusher motor are out of scope.
+
+| Command | Result |
+|---|---|
+| `tools/test-host.ps1` | Exit 0; M370 golden frames and motion safety tests passed |
+| `tools/generate.ps1 -IocPath ...` | Exit 0; USART2/USART3 labels and USER CODE integration preserved |
+| `tools/build.ps1 -ProjectPath ... -TargetName c5-firmware -Rebuild` | AC5 build completed; 0 errors, 0 warnings |
+| `tools/verify.ps1` with current-worktree environment paths | Completed; doctor, both host suites, CubeMX and AC5 passed |
+
+Program size: Code 8216, RO-data 296, RW-data 36, ZI-data 2020 bytes.
+
+Firmware image:
+`target/c5-firmware/MDK-ARM/c5-firmware/c5-firmware.hex`.
+
+No firmware was flashed, no serial port was opened and no motor command was
+sent. TTL idle voltage, per-motor address/configuration, wheel polarity,
+broadcast-stop behavior and all motion remain hardware-unverified.
+
+### M370 address commissioning
+
+Date: 2026-09-05
+
+- Windows enumerated the WCH-Link UART as `WCH-Link SERIAL (COM11)`.
+- With only one motor connected at a time, `00 15 6B` confirmed the left-front
+  motor at address 1.
+- Sent stored-address commands for right-front 2, left-rear 3 and right-rear 4;
+  each returned `Addr AE 02 6B` and then identified itself at the new address.
+- Power-cycled each changed motor and confirmed `02 15 02 6B`,
+  `03 15 03 6B` and `04 15 04 6B` respectively.
+- No velocity, position, torque or enable command was sent. Wheel motion was
+  not requested or observed.
+
+### WCH-Link raised-wheel motion acceptance
+
+Date: 2026-09-05
+
+- Connected all four motors to the shared TTL distribution board and received
+  valid addressed `3A` status replies from IDs 1, 2, 3 and 4.
+- Ran each wheel independently at 15 RPM for up to 5 seconds, followed by its
+  addressed immediate-stop command. Command and stop acknowledgements passed;
+  the user confirmed forward installation direction.
+- Sent one 41-byte AA velocity frame for simultaneous four-wheel forward,
+  reverse and right-strafe patterns. The user confirmed the raised-wheel
+  behavior was normal.
+- Stopped each motor by address after every grouped test. No ground-driving,
+  left-strafe, rotation, link-loss or STM32 motor-UART test was performed.
+- Replaced the firmware's broadcast stop with a 25-byte AA frame containing
+  four addressed immediate-stop subcommands. Host tests and the AC5 rebuild
+  passed with 0 errors and 0 warnings.
+
+### M370 motor UART reroute
+
+Date: 2026-09-05
+
+- The user confirmed that H1 is the core-to-baseboard socket and that the
+  baseboard has no accessible USART2 connector suitable for the installation.
+- Rebound the M370 transport from USART2 PA2/PA3 to the otherwise unused
+  USART3 PB10/PB11. The existing baseboard synchronous-serial connector is the
+  physical connection point; USART1 remains the CH340 HOST link and the PS2
+  GPIO assignment is unchanged.
+- CubeMX labels remain `AUX_UART_TX/RX` on USART2 and `MOTOR_UART_TX/RX` on
+  USART3. No option bytes, boot configuration or debug-pin policy changed.
+
+| Command | Result |
+|---|---|
+| `tools/verify.ps1` with pinned local package paths | Completed; doctor, both host suites, CubeMX and AC5 passed |
+| Keil AC5 rebuild | 0 errors, 0 warnings |
+
+Program size: Code 8292, RO-data 296, RW-data 36, ZI-data 2020 bytes.
+
+Firmware image:
+`target/c5-firmware/MDK-ARM/c5-firmware/c5-firmware.hex`.
+
+No firmware was flashed and no motor command was sent. The USART3-to-M370
+physical link remains hardware-unverified.
+
+### WCH-Link firmware programming
+
+Date: 2026-09-05
+
+- Received explicit user authorization to flash. The core board was removed
+  from the baseboard, so no motor was connected during programming.
+- Detected WCH-Link as CMSIS-DAPv2, firmware 2.0.0, over SWD at 1 MHz.
+- Read `DBGMCU_IDCODE=0x20036410` and a 64 KiB flash-size register, matching the
+  STM32F103C8 project target.
+- Programmed the addressed HEX ranges with MounRiver OpenOCD, verified them
+  successfully and reset the target. No option-byte or mass-erase command was
+  issued.
+
+Firmware image: `target/c5-firmware/MDK-ARM/c5-firmware/c5-firmware.hex`
+
+- Size: 24,306 bytes
+- SHA-256: `87B79806CF73E095E8553E4A7CCAB235239E57B5C26E91F7D6E3F9B23C41ABC1`
+- Result: `Programming Finished`, `Verified OK`, `Resetting Target`
+
+The programmed firmware has not yet been accepted on the installed
+USART3-to-M370 link, and no motor command was sent during this step.
+
+### STM32 PS2 motion link observation
+
+Date: 2026-09-05
+
+- The user reinstalled the core board and confirmed that PS2 control drives
+  the M370 wheels through the new USART3 path.
+- The user reported that the resulting speed feels too slow.
+- The physical gearbox ratio is 10:1. The M370 manual states that `GearRat`
+  defaults to 1.00 and scales speed/position to the geared output shaft; this
+  parameter has not yet been read or changed on the four addressed motors.
+- No speed constant or persistent motor parameter was changed on the basis of
+  this observation alone.
+
+### M370 reduction-ratio readback
+
+Date: 2026-09-05
+
+- With the STM32 serial connection removed and WCH-Link UART connected to the
+  shared motor board, sent addressed read-only `47` queries to IDs 1-4.
+- All four returned `00 00 00 64`, confirming `GearRat=1.00` on every motor.
+- The physical gearbox is 10:1, so the current 300 RPM command corresponds to
+  approximately 30 RPM at the output shaft until `GearRat` is corrected.
+- No persistent motor parameter and no motion command was sent.
+
+### M370 reduction-ratio programming
+
+Date: 2026-09-05
+
+- With explicit user authorization, sent addressed `6A 51` commands to IDs
+  1-4 with the persistent-storage flag and ratio value `00 00 03 E8` (10.00).
+- Every motor acknowledged with `Addr 6A 02 6B`.
+- Immediate addressed `47` readback returned `00 00 03 E8` from all four
+  motors.
+- No motion command was sent. Power-cycle retention remains to be checked.
+
+After the user power-cycled and reconnected the motor bus, addressed `47`
+queries again returned `00 00 03 E8` from IDs 1-4. Persistent retention of
+`GearRat=10.00` is therefore confirmed. No motion command was sent during the
+retention check.
+
+### PS2 braking observation
+
+Date: 2026-09-05
+
+- After reduction-ratio correction, the user reported that available speed is
+  sufficient but releasing the stick from high speed brakes too abruptly.
+- Source inspection confirmed that valid PS2 neutral currently calls
+  `C5_Motion_Stop()` and sends the M370 `FE` immediate-stop command, the same
+  path used for safety stops.
+- Recommended separating normal neutral deceleration from dead-man release,
+  invalid/timeout frames, KEY1, mode changes and faults. No firmware change or
+  flash was performed for this observation.
+
+### PS2 controlled neutral stop and XS pusher planning
+
+Date: 2026-09-05
+
+- Added a normal-neutral stop path that sends four M370 `F6` zero-speed
+  commands at 600 RPM/s and enters an explicit `DECELERATING` state.
+- A 550 ms deadline then sends the existing addressed `FE` stop frame. Dead-man
+  release, invalid/timeout PS2 data, mode changes and transport faults retain
+  immediate `FE` behavior.
+- Added golden-frame and state-machine tests for controlled stop, deadline stop,
+  dead-man override and the unchanged fault-stop paths.
+- Reviewed the user-provided XS second-generation STM32F103 HAL X-firmware
+  serial example. Its UART is 115200 8N1; position command is `FD`, and
+  immediate stop remains `FE 98`. The user selected the existing USART3 TTL
+  network for the pusher, but address, firmware mode, power and mechanical
+  limits remain unresolved.
+
+| Command | Result |
+|---|---|
+| `tools/test-host.ps1` | Exit 0; controlled-stop bytes and safety state tests passed |
+| `tools/verify.ps1` | Exit 0; doctor, both host suites, CubeMX generation and AC5 build passed |
+| Keil AC5 rebuild | 0 errors, 0 warnings |
+
+Program size: Code 8464, RO-data 296, RW-data 36, ZI-data 2020 bytes.
+
+No firmware was flashed and no motor command was sent. Controlled stopping and
+all XS behavior remain hardware-unverified.
+
+### XS pusher address commissioning
+
+Date: 2026-09-05
+
+- Isolated the XS pusher from the STM32 and all four M370 wheel motors.
+- Read-only scan found the XS at ID 2: `02 35 00 00 00 6B`.
+- Sent persistent ID command `02 AE 4B 01 05 6B`; received
+  `02 AE 02 6B`. ID 5 then answered and ID 2 no longer did.
+- After a user-performed power cycle, ID 5 again returned
+  `05 35 00 00 00 6B`; ID 2 remained silent. Persistent ID 5 is confirmed.
+- Read-only configuration query `05 42 6C 6B` returned 33 bytes:
+  `05 42 21 15 19 02 02 02 00 10 01 00 04 B0 0B B8 13 88 05 07 05 00 01 01 00 08 08 98 07 D0 00 08 6B`.
+
+No enable, homing, position, velocity or stop command was sent. Pusher firmware
+mode and mechanical safety parameters remain unresolved.
+
+The user subsequently identified the pusher as Emm42 and confirmed that the
+mechanism has limit protection. Limit count, contact type and whether the input
+terminates at the motor driver or STM32 remain unresolved; no motion was sent.
+
+- The user clarified that STM32 connects only shared TTL TX/RX/GND and has no
+  pusher limit GPIO.
+- At the retracted endpoint the display showed about -0.6 degrees. Read-only
+  position query returned `05 36 01 00 00 00 73 6B`, which is negative 115
+  encoder counts, approximately -0.632 degrees at 65536 counts/revolution.
+- The extended display position is about 186.0 degrees, for an observed travel
+  of about 186.6 degrees.
+- Read-only origin query returned
+  `05 22 00 00 00 1E 00 00 27 10 01 2C 03 20 00 3C 00 6B`: mode 0, direction
+  0, 30 RPM, 10 s timeout, 300 RPM stall-detect speed, 800 mA, 60 ms, and
+  power-on homing disabled. This is not limit-switch homing mode 3.
+
+No homing or motion command was sent.
+
+The user confirmed that both endpoints are mechanical hard stops, not
+electrical limit switches. The planned software envelope is initially 5 to 180
+degrees, leaving about 5 to 6 degrees from the observed stops. Collision homing
+will not be enabled for routine operation. These limits remain hardware-
+unverified, and no motion command was sent.
+
+### Emm42 bounded motion diagnostics
+
+Date: 2026-09-05
+
+- With explicit user authorization for repeated tests and all wheel motors
+  disconnected, attempted 50-pulse Emm position commands at 10 RPM in both
+  directions. Every `FD` command acknowledged with status `02`.
+- The first direction pressed slightly toward the retracted hard stop. Each
+  attempt was bounded by an automatic addressed `FE` after one second.
+- Cleared stall protection with `05 0E 52 6B`, re-enabled with
+  `05 F3 AB 01 00 6B`, then repeated the opposite direction; no effective
+  movement occurred.
+- Tested both directions with the simpler `F6` velocity command at 1 RPM for
+  at most 500 ms. Commands acknowledged with status `02`, but live speed stayed
+  zero and position stayed near -1.1 degrees. Every attempt ended with a
+  successful addressed `FE` acknowledgement.
+- Read-only bus voltage was about 11.9 V. The user observed `MotType=1.8` and
+  microstep 16 on the display. No persistent motor parameter was changed.
+
+Further serial motion tests are stopped pending control/power diagnosis.
+
+### Emm42 no-torque follow-up
+
+Date: 2026-09-06
+
+- Reviewed the user-provided X42S V1.0.5 manual. The two onboard buttons only
+  navigate display and configuration pages; there is no panel jog function.
+- The manual confirms `CR_VFOC` is FOC closed-loop mode, `0x19` is the 1.8
+  degree motor type, and successful `F3 AB 01 00` enable should lock the shaft.
+- The user changed the pulse-port function to off. Readback then changed from
+  `P_Pul=02` to `P_Pul=00`, and the setting persisted across a power cycle.
+- Repeated one bounded ID 5 velocity test at 2 RPM for 800 ms after clearing
+  protection and enabling. `F3`, `F6`, and the automatic addressed `FE` all
+  returned status `02`, but position was unchanged and the shaft remained
+  loose. Motor status still reported enabled; stopped phase-current readback
+  was only 4-7.
+- No current, voltage, PID, motor-type, firmware, homing, or position parameter
+  was modified. Do not integrate or raise motion limits until power, phase
+  wiring, or the driver output stage explains the missing torque.
+
+### Host status enum synchronization
+
+Date: 2026-09-06
+
+- Added `DECELERATING=4` to the Orange Pi `MotionState` enum and a round-trip
+  protocol test so a status query during the 550 ms controlled-stop window
+  cannot fail Python enum decoding.
+- Commit-preparation verification ran the C host suite and RK3588 Python suite
+  successfully, then completed CubeMX generation. The user requested an
+  immediate push before the subsequent Keil build completed, so this final
+  revision does not claim a fresh AC5 build or completed full pipeline.

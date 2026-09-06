@@ -14,6 +14,7 @@
 | [acceptance.md](acceptance.md) | 环境、构建、烧录、电机和 PS2 验收门槛 |
 | [official-tooling-notes.md](official-tooling-notes.md) | 本机工具链基线 |
 | [motion-control.md](motion-control.md) | 电机协议、麦轮运动和安全策略 |
+| [m370-bringup.md](m370-bringup.md) | M370 TTL 接线、设址和首次架空动作 |
 | [ps2-control.md](ps2-control.md) | PS2、SWD 复用和遥控策略 |
 | [host-link.md](host-link.md) | 香橙派 USB/CH340 协议、控制权和验收顺序 |
 
@@ -21,14 +22,14 @@
 
 - MCU：STM32F103C8T6。
 - 四轮为独立总线电机，不是 MCU 四路直驱 PWM。
-- 电机总线：USART3 PB10/PB11，经底板单线 `DAT` 电路。
+- 电机总线：USART3 PB10/PB11，经底板同步串口和九路并联板连接四个 M370 TTL 模块。
 - 默认 HOST/串口下载：Orange Pi 或 PC USB → CH340 → USART1 PA9/PA10，115200。
-- 扩展串口：USART2 PA2/PA3 经 H1 引出，保留给后续 3.3 V UART/外置 RS485。
+- 扩展串口：USART2 PA2/PA3 保留，当前底板没有可施工的外露接线口。
 - 调试/遥控：上电使用 PA13/PA14 SWD；KEY1 长按后 PA12–PA15 切换为 PS2。
 - 时钟：8 MHz HSE，PLL ×9 至 72 MHz。
-- 当前镜像已烧录；PS2 模拟模式、KEY1 切换、架空和整车麦轮三轴运动已实测。
+- M370 新方案已烧录；地址 1-4、逐轮低速、整组前后、右横移和 PS2 控制已实测。
 - 手柄关机后接收器仍返回合法帧，无线失联停车尚未闭环。
-- HOST 固定帧、显式 ARM、200 ms 看门狗和 PS2 互斥已完成软件验证，实物串口验收待做。
+- HOST 固定帧、显式 ARM、200 ms 看门狗和 PS2 互斥已完成软件及 CH340 架空运动验收。
 
 ## 证据等级
 

@@ -38,16 +38,18 @@ static int16_t C5_SpeedMagnitude(int16_t speed)
     return (int16_t)magnitude;
 }
 
-/** @brief Encode and transmit a broadcast stop, recording its confirmation. */
+/** @brief Encode and transmit one addressed multi-motor stop frame. */
 static int C5_SendStop(C5_Motion *motion)
 {
-    char frame[C5_MOTOR_SINGLE_FRAME_SIZE + 1U];
+    uint8_t frame[C5_MOTOR_STOP_FRAME_SIZE];
     size_t length;
 
-    length = C5_MotorProtocol_FormatStop(frame, sizeof(frame));
+    length = C5_MotorProtocol_FormatStop(motion->layout,
+                                         frame,
+                                         sizeof(frame));
     if ((length == 0U) ||
         (motion->write(motion->write_context,
-                       (const uint8_t *)frame,
+                       frame,
                        length) != 0))
     {
         motion->stop_confirmed = 0U;
@@ -78,7 +80,7 @@ int C5_Motion_Init(C5_Motion *motion,
 
     motion->write = write;
     motion->write_context = write_context;
-    motion->layout = (layout != NULL) ? layout : &C5_MOTOR_LAYOUT_VENDOR_DEFAULT;
+    motion->layout = (layout != NULL) ? layout : &C5_MOTOR_LAYOUT_DEFAULT;
     motion->state = C5_MOTION_UNINITIALIZED;
     motion->deadline_ms = now_ms;
     motion->next_stop_retry_ms = now_ms;
@@ -100,7 +102,7 @@ int C5_Motion_CommandWheels(C5_Motion *motion,
                             uint32_t now_ms)
 {
     C5_WheelSpeeds limited;
-    char frame[C5_MOTOR_GROUP_FRAME_SIZE + 1U];
+    uint8_t frame[C5_MOTOR_GROUP_FRAME_SIZE];
     size_t length;
     uint32_t index;
     uint8_t any_motion;
@@ -138,7 +140,7 @@ int C5_Motion_CommandWheels(C5_Motion *motion,
                                             sizeof(frame));
     if ((length == 0U) ||
         (motion->write(motion->write_context,
-                       (const uint8_t *)frame,
+                       frame,
                        length) != 0))
     {
         C5_EnterFault(motion, now_ms);
@@ -226,6 +228,40 @@ int C5_Motion_Stop(C5_Motion *motion, uint32_t now_ms)
     return 0;
 }
 
+int C5_Motion_ControlledStop(C5_Motion *motion, uint32_t now_ms)
+{
+    uint8_t frame[C5_MOTOR_GROUP_FRAME_SIZE];
+    size_t length;
+
+    if ((motion == NULL) || (motion->write == NULL) ||
+        (motion->state == C5_MOTION_UNINITIALIZED) ||
+        (motion->state == C5_MOTION_FAULT))
+    {
+        return -1;
+    }
+    if (motion->state == C5_MOTION_STOPPED)
+    {
+        return 0;
+    }
+
+    length = C5_MotorProtocol_FormatControlledStop(
+        motion->layout,
+        C5_MOTOR_NORMAL_DECEL_RPM_S,
+        frame,
+        sizeof(frame));
+    if ((length == 0U) ||
+        (motion->write(motion->write_context, frame, length) != 0))
+    {
+        C5_EnterFault(motion, now_ms);
+        return -1;
+    }
+
+    motion->state = C5_MOTION_DECELERATING;
+    motion->stop_confirmed = 0U;
+    motion->deadline_ms = now_ms + C5_MOTION_NORMAL_DECEL_MS;
+    return 0;
+}
+
 int C5_Motion_ClearFault(C5_Motion *motion, uint32_t now_ms)
 {
     if ((motion == NULL) || (motion->state != C5_MOTION_FAULT))
@@ -248,7 +284,8 @@ void C5_Motion_Service(C5_Motion *motion, uint32_t now_ms)
     {
         return;
     }
-    if ((motion->state == C5_MOTION_MOVING) &&
+    if (((motion->state == C5_MOTION_MOVING) ||
+         (motion->state == C5_MOTION_DECELERATING)) &&
         C5_TimeReached(now_ms, motion->deadline_ms))
     {
         (void)C5_Motion_Stop(motion, now_ms);

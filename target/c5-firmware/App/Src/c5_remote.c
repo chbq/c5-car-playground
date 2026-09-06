@@ -84,7 +84,9 @@ int C5_Remote_ProcessFrame(C5_Remote *remote,
 
     if (!C5_Ps2_DeadmanPressed(&ps2))
     {
-        if (remote->state == C5_REMOTE_ACTIVE)
+        if ((remote->state == C5_REMOTE_ACTIVE) ||
+            (C5_Motion_GetState(remote->motion) ==
+             C5_MOTION_DECELERATING))
         {
             if (C5_Motion_Stop(remote->motion, now_ms) != 0)
             {
@@ -103,7 +105,7 @@ int C5_Remote_ProcessFrame(C5_Remote *remote,
     {
         if (remote->state == C5_REMOTE_ACTIVE)
         {
-            if (C5_Motion_Stop(remote->motion, now_ms) != 0)
+            if (C5_Motion_ControlledStop(remote->motion, now_ms) != 0)
             {
                 return -1;
             }

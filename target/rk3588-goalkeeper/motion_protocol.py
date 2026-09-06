@@ -44,6 +44,7 @@ class MotionState(IntEnum):
     STOPPED = 1
     MOVING = 2
     FAULT = 3
+    DECELERATING = 4
 
 
 @dataclass(frozen=True)

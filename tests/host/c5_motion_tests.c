@@ -14,11 +14,32 @@
 
 typedef struct
 {
-    char last_frame[C5_MOTOR_GROUP_FRAME_SIZE + 1U];
+    uint8_t last_frame[C5_MOTOR_GROUP_FRAME_SIZE];
     size_t last_length;
     unsigned int write_count;
     unsigned int failures_remaining;
 } MockTransport;
+
+static const uint8_t C5_TEST_STOP_FRAME[C5_MOTOR_STOP_FRAME_SIZE] =
+{
+    0x00U, 0xAAU, 0x00U, 0x19U,
+    0x01U, 0xFEU, 0x98U, 0x00U, 0x6BU,
+    0x02U, 0xFEU, 0x98U, 0x00U, 0x6BU,
+    0x03U, 0xFEU, 0x98U, 0x00U, 0x6BU,
+    0x04U, 0xFEU, 0x98U, 0x00U, 0x6BU,
+    0x6BU
+};
+
+static const uint8_t C5_TEST_CONTROLLED_STOP_FRAME[
+    C5_MOTOR_GROUP_FRAME_SIZE] =
+{
+    0x00U, 0xAAU, 0x00U, 0x29U,
+    0x01U, 0xF6U, 0x00U, 0x02U, 0x58U, 0x00U, 0x00U, 0x00U, 0x6BU,
+    0x02U, 0xF6U, 0x00U, 0x02U, 0x58U, 0x00U, 0x00U, 0x00U, 0x6BU,
+    0x03U, 0xF6U, 0x00U, 0x02U, 0x58U, 0x00U, 0x00U, 0x00U, 0x6BU,
+    0x04U, 0xF6U, 0x00U, 0x02U, 0x58U, 0x00U, 0x00U, 0x00U, 0x6BU,
+    0x6BU
+};
 
 typedef struct
 {
@@ -70,11 +91,23 @@ static int MockWrite(void *context, const uint8_t *data, size_t length)
         --mock->failures_remaining;
         return -1;
     }
-    assert(length < sizeof(mock->last_frame));
+    assert(length <= sizeof(mock->last_frame));
     memcpy(mock->last_frame, data, length);
-    mock->last_frame[length] = '\0';
     mock->last_length = length;
     return 0;
+}
+
+static void AssertLastFrame(const MockTransport *mock,
+                            const uint8_t *expected,
+                            size_t length)
+{
+    assert(mock->last_length == length);
+    assert(memcmp(mock->last_frame, expected, length) == 0);
+}
+
+static void AssertLastStop(const MockTransport *mock)
+{
+    AssertLastFrame(mock, C5_TEST_STOP_FRAME, sizeof(C5_TEST_STOP_FRAME));
 }
 
 static void MakeNeutralPs2Frame(uint8_t frame[C5_PS2_FRAME_SIZE])
@@ -385,24 +418,69 @@ static void TestHostTimeoutWraparound(void)
 
 static void TestProtocol(void)
 {
-    char frame[C5_MOTOR_GROUP_FRAME_SIZE + 1U];
+    static const uint8_t wheels[] =
+    {
+        0x00U, 0xAAU, 0x00U, 0x29U,
+        0x01U, 0xF6U, 0x00U, 0x01U, 0x2CU, 0x01U, 0x2CU, 0x00U, 0x6BU,
+        0x02U, 0xF6U, 0x01U, 0x01U, 0x2CU, 0x02U, 0x58U, 0x00U, 0x6BU,
+        0x03U, 0xF6U, 0x01U, 0x01U, 0x2CU, 0x03U, 0x84U, 0x00U, 0x6BU,
+        0x04U, 0xF6U, 0x00U, 0x01U, 0x2CU, 0x04U, 0xB0U, 0x00U, 0x6BU,
+        0x6BU
+    };
+    C5_MotorLayout invalid_layout = C5_MOTOR_LAYOUT_DEFAULT;
+    uint8_t frame[C5_MOTOR_GROUP_FRAME_SIZE];
     C5_WheelSpeeds speeds = {{100, 200, -300, -400}};
     size_t length;
 
-    length = C5_MotorProtocol_FormatStop(frame, sizeof(frame));
-    assert(length == C5_MOTOR_SINGLE_FRAME_SIZE);
-    assert(strcmp(frame, "#255P1500T0000!") == 0);
+    length = C5_MotorProtocol_FormatStop(&C5_MOTOR_LAYOUT_DEFAULT,
+                                         frame,
+                                         sizeof(frame));
+    assert(length == C5_MOTOR_STOP_FRAME_SIZE);
+    assert(memcmp(frame, C5_TEST_STOP_FRAME,
+                  sizeof(C5_TEST_STOP_FRAME)) == 0);
 
     length = C5_MotorProtocol_FormatWheels(
-        &C5_MOTOR_LAYOUT_VENDOR_DEFAULT, &speeds, frame, sizeof(frame));
+        &C5_MOTOR_LAYOUT_DEFAULT, &speeds, frame, sizeof(frame));
     assert(length == C5_MOTOR_GROUP_FRAME_SIZE);
-    assert(strcmp(frame,
-        "{#006P1600T0000!#007P1300T0000!#008P1200T0000!#009P1900T0000!}") == 0);
+    assert(memcmp(frame, wheels, sizeof(wheels)) == 0);
 
-    assert(C5_MotorProtocol_SpeedToPulse(1200, 1) == 2500U);
-    assert(C5_MotorProtocol_SpeedToPulse(-1200, 1) == 500U);
-    assert(C5_MotorProtocol_FormatSingleRaw(6U, 499U, 0U,
-                                             frame, sizeof(frame)) == 0U);
+    length = C5_MotorProtocol_FormatControlledStop(
+        &C5_MOTOR_LAYOUT_DEFAULT,
+        C5_MOTOR_NORMAL_DECEL_RPM_S,
+        frame,
+        sizeof(frame));
+    assert(length == C5_MOTOR_GROUP_FRAME_SIZE);
+    assert(memcmp(frame, C5_TEST_CONTROLLED_STOP_FRAME,
+                  sizeof(C5_TEST_CONTROLLED_STOP_FRAME)) == 0);
+    assert(C5_MotorProtocol_FormatControlledStop(
+               &C5_MOTOR_LAYOUT_DEFAULT, 0U, frame, sizeof(frame)) == 0U);
+
+    assert(C5_MotorProtocol_SpeedToRpmTenths(1200) == 3000U);
+    assert(C5_MotorProtocol_SpeedToRpmTenths(-500) == 1500U);
+    invalid_layout.id[1] = invalid_layout.id[0];
+    assert(C5_MotorProtocol_FormatWheels(&invalid_layout, &speeds,
+                                         frame, sizeof(frame)) == 0U);
+}
+
+static void TestControlledStop(void)
+{
+    MockTransport mock = {{0}, 0U, 0U, 0U};
+    C5_Motion motion;
+
+    assert(C5_Motion_Init(&motion, MockWrite, &mock, NULL, 1000U) == 0);
+    assert(C5_Motion_Forward(&motion, 1000, 250U, 1000U) == 0);
+    assert(C5_Motion_ControlledStop(&motion, 1100U) == 0);
+    assert(C5_Motion_GetState(&motion) == C5_MOTION_DECELERATING);
+    AssertLastFrame(&mock, C5_TEST_CONTROLLED_STOP_FRAME,
+                    sizeof(C5_TEST_CONTROLLED_STOP_FRAME));
+
+    C5_Motion_Service(&motion,
+                      1100U + C5_MOTION_NORMAL_DECEL_MS - 1U);
+    assert(C5_Motion_GetState(&motion) == C5_MOTION_DECELERATING);
+    C5_Motion_Service(&motion,
+                      1100U + C5_MOTION_NORMAL_DECEL_MS);
+    assert(C5_Motion_GetState(&motion) == C5_MOTION_STOPPED);
+    AssertLastStop(&mock);
 }
 
 static void AssertSpeeds(const C5_WheelSpeeds *speeds,
@@ -433,27 +511,43 @@ static void TestMecanum(void)
 
 static void TestTimeoutAndFaultStop(void)
 {
+    static const uint8_t forward[] =
+    {
+        0x00U, 0xAAU, 0x00U, 0x29U,
+        0x01U, 0xF6U, 0x00U, 0x01U, 0x2CU, 0x01U, 0x2CU, 0x00U, 0x6BU,
+        0x02U, 0xF6U, 0x01U, 0x01U, 0x2CU, 0x01U, 0x2CU, 0x00U, 0x6BU,
+        0x03U, 0xF6U, 0x00U, 0x01U, 0x2CU, 0x01U, 0x2CU, 0x00U, 0x6BU,
+        0x04U, 0xF6U, 0x01U, 0x01U, 0x2CU, 0x01U, 0x2CU, 0x00U, 0x6BU,
+        0x6BU
+    };
+    static const uint8_t backward[] =
+    {
+        0x00U, 0xAAU, 0x00U, 0x29U,
+        0x01U, 0xF6U, 0x01U, 0x01U, 0x2CU, 0x01U, 0x2CU, 0x00U, 0x6BU,
+        0x02U, 0xF6U, 0x00U, 0x01U, 0x2CU, 0x01U, 0x2CU, 0x00U, 0x6BU,
+        0x03U, 0xF6U, 0x01U, 0x01U, 0x2CU, 0x01U, 0x2CU, 0x00U, 0x6BU,
+        0x04U, 0xF6U, 0x00U, 0x01U, 0x2CU, 0x01U, 0x2CU, 0x00U, 0x6BU,
+        0x6BU
+    };
     MockTransport mock = {{0}, 0U, 0U, 0U};
     C5_Motion motion;
 
     assert(C5_Motion_Init(&motion, MockWrite, &mock, NULL, 1000U) == 0);
     assert(C5_Motion_GetState(&motion) == C5_MOTION_STOPPED);
-    assert(strcmp(mock.last_frame, "#255P1500T0000!") == 0);
+    AssertLastStop(&mock);
 
     assert(C5_Motion_Forward(&motion, 100, 250U, 1000U) == 0);
     assert(C5_Motion_GetState(&motion) == C5_MOTION_MOVING);
-    assert(strcmp(mock.last_frame,
-        "{#006P1600T0000!#007P1400T0000!#008P1600T0000!#009P1400T0000!}") == 0);
+    AssertLastFrame(&mock, forward, sizeof(forward));
 
     assert(C5_Motion_Backward(&motion, -100, 250U, 1100U) == 0);
-    assert(strcmp(mock.last_frame,
-        "{#006P1400T0000!#007P1600T0000!#008P1400T0000!#009P1600T0000!}") == 0);
+    AssertLastFrame(&mock, backward, sizeof(backward));
 
     C5_Motion_Service(&motion, 1349U);
     assert(C5_Motion_GetState(&motion) == C5_MOTION_MOVING);
     C5_Motion_Service(&motion, 1350U);
     assert(C5_Motion_GetState(&motion) == C5_MOTION_STOPPED);
-    assert(strcmp(mock.last_frame, "#255P1500T0000!") == 0);
+    AssertLastStop(&mock);
 
     mock.failures_remaining = 2U;
     assert(C5_Motion_StrafeRight(&motion, 200, 200U, 2000U) != 0);
@@ -465,7 +559,7 @@ static void TestTimeoutAndFaultStop(void)
     C5_Motion_Service(&motion, 2100U);
     assert(motion.stop_confirmed == 1U);
     assert(C5_Motion_GetState(&motion) == C5_MOTION_FAULT);
-    assert(strcmp(mock.last_frame, "#255P1500T0000!") == 0);
+    AssertLastStop(&mock);
 
     assert(C5_Motion_ClearFault(&motion, 2200U) == 0);
     assert(C5_Motion_GetState(&motion) == C5_MOTION_STOPPED);
@@ -538,7 +632,7 @@ static void TestRemoteSafety(void)
     MakeNeutralPs2Frame(frame);
     assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 75U) == 0);
     assert(C5_Remote_GetState(&remote) == C5_REMOTE_READY);
-    assert(strcmp(mock.last_frame, "#255P1500T0000!") == 0);
+    AssertLastStop(&mock);
 
     assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 80U) == 0);
     assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 90U) == 0);
@@ -549,11 +643,44 @@ static void TestRemoteSafety(void)
     assert(C5_Remote_GetState(&remote) == C5_REMOTE_ACTIVE);
     C5_Remote_Service(&remote, 250U);
     assert(C5_Remote_GetState(&remote) == C5_REMOTE_DISARMED);
-    assert(strcmp(mock.last_frame, "#255P1500T0000!") == 0);
+    AssertLastStop(&mock);
 
     frame[1] = 0x41U;
     assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 300U) != 0);
     assert(C5_Remote_GetState(&remote) == C5_REMOTE_DISARMED);
+}
+
+static void TestRemoteControlledStop(void)
+{
+    MockTransport mock = {{0}, 0U, 0U, 0U};
+    C5_Motion motion;
+    C5_Remote remote;
+    uint8_t frame[C5_PS2_FRAME_SIZE];
+
+    assert(C5_Motion_Init(&motion, MockWrite, &mock, NULL, 0U) == 0);
+    C5_Remote_Init(&remote, &motion, 0U);
+    MakeNeutralPs2Frame(frame);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 10U) == 0);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 20U) == 0);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 30U) == 0);
+
+    frame[4] = (uint8_t)(frame[4] & 0xFBU);
+    frame[8] = 96U;
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 50U) == 0);
+    assert(C5_Remote_GetState(&remote) == C5_REMOTE_ACTIVE);
+
+    MakeNeutralPs2Frame(frame);
+    frame[4] = (uint8_t)(frame[4] & 0xFBU);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 75U) == 0);
+    assert(C5_Remote_GetState(&remote) == C5_REMOTE_READY);
+    assert(C5_Motion_GetState(&motion) == C5_MOTION_DECELERATING);
+    AssertLastFrame(&mock, C5_TEST_CONTROLLED_STOP_FRAME,
+                    sizeof(C5_TEST_CONTROLLED_STOP_FRAME));
+
+    MakeNeutralPs2Frame(frame);
+    assert(C5_Remote_ProcessFrame(&remote, frame, sizeof(frame), 100U) == 0);
+    assert(C5_Motion_GetState(&motion) == C5_MOTION_STOPPED);
+    AssertLastStop(&mock);
 }
 
 static void TestRemoteTimeoutWraparound(void)
@@ -632,9 +759,11 @@ int main(void)
     TestHostUartQueueAndFaults();
     TestMecanum();
     TestTimeoutAndFaultStop();
+    TestControlledStop();
     TestTickWraparound();
     TestPs2DecodeAndMapping();
     TestRemoteSafety();
+    TestRemoteControlledStop();
     TestRemoteTimeoutWraparound();
     TestHostControlSafety();
     TestHostTimeoutWraparound();
