@@ -21,9 +21,10 @@ typedef int (*C5_MotionWrite)(void *context,
 typedef enum
 {
     C5_MOTION_UNINITIALIZED = 0,
-    C5_MOTION_STOPPED,
-    C5_MOTION_MOVING,
-    C5_MOTION_FAULT
+    C5_MOTION_STOPPED = 1,
+    C5_MOTION_MOVING = 2,
+    C5_MOTION_FAULT = 3,
+    C5_MOTION_DECELERATING = 4
 } C5_MotionState;
 
 typedef struct
@@ -38,7 +39,7 @@ typedef struct
 } C5_Motion;
 
 /**
- * @brief  Initialize the motion state machine and send a broadcast stop.
+ * @brief  Initialize the motion state machine and stop all configured motors.
  * @param[out] motion         Motion object.
  * @param[in]  write          Low-level frame writer.
  * @param[in]  write_context  Writer context.
@@ -79,7 +80,7 @@ int C5_Motion_CommandWheels(C5_Motion *motion,
  * @retval 0   Transmit succeeded.
  * @retval -1  Invalid input, state, lifetime or transport.
  * @note The three axes accept [-32768, 32767]. Mixed wheel outputs are
- *       normalized to +/-C5_MOTION_OUTPUT_LIMIT (currently 700).
+ *       normalized to +/-C5_MOTION_OUTPUT_LIMIT.
  */
 int C5_Motion_CommandTwist(C5_Motion *motion,
                            int16_t vx,
@@ -167,13 +168,24 @@ int C5_Motion_RotateClockwise(C5_Motion *motion, int16_t speed,
                               uint32_t hold_ms, uint32_t now_ms);
 
 /**
- * @brief  Send an immediate broadcast stop and clear the motion deadline.
+ * @brief  Send immediate stops to all configured motors and clear the deadline.
  * @param[in,out] motion  Motion object.
  * @param[in]     now_ms  Current millisecond tick.
  * @retval 0   Stop transmit succeeded.
  * @retval -1  Invalid input or failed transmit; failure latches a fault.
  */
 int C5_Motion_Stop(C5_Motion *motion, uint32_t now_ms);
+
+/**
+ * @brief  Ramp all wheels toward zero, then enforce an immediate stop.
+ * @param[in,out] motion  Motion object.
+ * @param[in]     now_ms  Current millisecond tick.
+ * @retval 0   Zero-speed command sent; state becomes DECELERATING.
+ * @retval -1  Invalid input or failed transmit; failure latches a fault.
+ * @note Intended only for normal operator joystick release. Safety events
+ *       must call C5_Motion_Stop instead.
+ */
+int C5_Motion_ControlledStop(C5_Motion *motion, uint32_t now_ms);
 
 /**
  * @brief  Retry stop while faulted and clear the fault after confirmation.

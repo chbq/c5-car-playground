@@ -192,7 +192,7 @@ int main(void)
   if (C5_Motion_Init(&motion,
                      C5_MotorBusHal_Write,
                      &motor_bus,
-                     &C5_MOTOR_LAYOUT_VENDOR_DEFAULT,
+                     &C5_MOTOR_LAYOUT_DEFAULT,
                      HAL_GetTick()) != 0)
   {
     Error_Handler();

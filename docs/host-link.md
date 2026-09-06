@@ -19,7 +19,7 @@ Orange Pi HOST 共用 CH340，同一时刻只由一台 USB 主机连接并打开
 Linux 默认按以下顺序解析端口：`C5_HOST_PORT`、`/dev/c5-host`、唯一 CH340
 `/dev/serial/by-id/...`、唯一 `/dev/ttyUSB*`。多个 USB 串口时必须显式指定。
 CH340 DTR/RTS 接入核心板自动下载电路；Python 在 `open()` 前撤销两信号，但驱动层
-瞬态仍须实测。USART2 PA2/PA3 保留为 3.3 V 扩展链路，不参与本阶段默认 HOST。
+瞬态仍须实测。USART2 PA2/PA3 保留，不参与本阶段默认 HOST 或电机链路。
 SSH 密钥登录是主要远程通道；NoMachine 只用于观察 OpenCV 窗口。
 
 ## 控制权与安全
@@ -33,7 +33,7 @@ SSH 密钥登录是主要远程通道；NoMachine 只用于观察 OpenCV 窗口�
 - 坏帧、UART 错误、接收队列溢出和运动故障均停车；
 - PB13 保持原 PS2 指示语义，不用于 HOST 状态。
 
-STM32 使用 USART1 逐字节中断接收和 4 项事件队列；ISR 只解析/排队，不发送电机指令。主循环完成控制仲裁、USART1 状态回复和 USART3 电机发送。
+STM32 使用 USART1 逐字节中断接收和 4 项事件队列；ISR 只解析/排队，不发送电机指令。主循环完成控制仲裁、USART1 状态回复和 USART3 M370 TTL 电机发送。
 
 ## 协议摘要
 

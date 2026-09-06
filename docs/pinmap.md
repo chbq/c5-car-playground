@@ -5,10 +5,10 @@
 | 优先级 | 功能 | MCU 资源 | 板级路径 | 策略 |
 |---|---|---|---|---|
 | 固定 | Orange Pi USB HOST、串口下载 | USART1 PA9/PA10 | CH340、USB | HOST 默认链路；与 PC 下载互斥使用 |
-| 固定 | 四轮电机总线 | USART3 PB10/PB11 | H1 → DAT 电路 | 保留 |
+| 固定 | 四轮 M370 TTL 总线 | USART3 PB10/PB11 | 底板同步串口 3/2 → 九路并联板 R/T | 当前方案 |
 | 条件复用 | 调试/烧录 | PA13 SWDIO、PA14 SWCLK | H1 11/12 | 上电保留；KEY1 长按后才交给 PS2 |
 | 次要/条件复用 | PS2 遥控 | PA12 CLK、PA13 ATT、PA14 CMD、PA15 DAT；PA8 KEY1 | H1 10–13、H1 1 | 与 SWD 互斥；显式长按进入，复位或再次长按退出 |
-| 扩展 | 3.3 V UART/外置 RS485 | USART2 PA2/PA3 | H1 26/24 | 当前保留，不承载默认 HOST |
+| 板级共线 | 旧 DAT/蓝牙路径 | USART3 PB10/PB11 | 与同步串口同组 TX/RX | 外部端口保持空闲 |
 | RS485 可选 | 收发方向 | 候选 PA11 | H1 14 / KEY2 | 选定收发器前保留 |
 | 板载占用 | 外部 Flash | SPI2 PB12–PB15 | W25Q64；PB13 兼作 LED | 暂保留 |
 
@@ -67,10 +67,10 @@ PA8 同时标为 KEY1 和 IR。S1/S2 交叉复用同一对 PA0/PA1，并非四�
 
 | 外设 | 候选引脚 | 冲突 |
 |---|---|---|
-| USART2 | PA2/PA3 | S3 `SSA3`、S4 `SSA4` |
+| USART2 | PA2/PA3 | S3 `SSA3`、S4 `SSA4`；当前无可施工外露口 |
 | SPI1 | PA4–PA7 | S5/S6 |
 | I2C1 | PB6/PB7 或 PB8/PB9 重映射 | DJ3/DJ4 或 DJ1/DJ2 |
-| I2C2 | PB10/PB11 | 电机总线，不可用 |
+| I2C2 | PB10/PB11 | USART3 电机总线占用，不复用 |
 | TIM1 | PA8–PA11 | IR/KEY1、CH340、KEY2 |
 | TIM2 | PA0–PA3 | 传感器、USART2 |
 | TIM3 | PA6/PA7/PB0/PB1 | 传感器 |

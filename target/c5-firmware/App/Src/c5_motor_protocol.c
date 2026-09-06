@@ -2,7 +2,16 @@
 
 #include "c5_motion_config.h"
 
-const C5_MotorLayout C5_MOTOR_LAYOUT_VENDOR_DEFAULT =
+#define C5_M370_COMMAND_VELOCITY  0xF6U
+#define C5_M370_COMMAND_STOP      0xFEU
+#define C5_M370_STOP_KEY          0x98U
+#define C5_M370_COMMAND_MULTI     0xAAU
+#define C5_M370_CHECK_BYTE        0x6BU
+#define C5_M370_SYNC_DISABLED     0x00U
+#define C5_M370_BROADCAST_ID      0x00U
+#define C5_M370_STOP_SUBFRAME_SIZE   5U
+
+const C5_MotorLayout C5_MOTOR_LAYOUT_DEFAULT =
 {
     {
         C5_MOTOR_ID_LEFT_FRONT,
@@ -18,34 +27,91 @@ const C5_MotorLayout C5_MOTOR_LAYOUT_VENDOR_DEFAULT =
     }
 };
 
-static void C5_Write3(char *output, uint16_t value)
+static void C5_WriteU16Be(uint8_t *output, uint16_t value)
 {
-    output[0] = (char)('0' + ((value / 100U) % 10U));
-    output[1] = (char)('0' + ((value / 10U) % 10U));
-    output[2] = (char)('0' + (value % 10U));
+    output[0] = (uint8_t)(value >> 8);
+    output[1] = (uint8_t)(value & 0xFFU);
 }
 
-static void C5_Write4(char *output, uint16_t value)
+static int C5_LayoutIsValid(const C5_MotorLayout *layout);
+
+static void C5_WriteVelocity(uint8_t *output,
+                             uint8_t id,
+                             uint8_t direction,
+                             uint16_t speed_rpm_tenths,
+                             uint16_t acceleration_rpm_s)
 {
-    output[0] = (char)('0' + ((value / 1000U) % 10U));
-    output[1] = (char)('0' + ((value / 100U) % 10U));
-    output[2] = (char)('0' + ((value / 10U) % 10U));
-    output[3] = (char)('0' + (value % 10U));
+    output[0] = id;
+    output[1] = C5_M370_COMMAND_VELOCITY;
+    output[2] = direction;
+    C5_WriteU16Be(&output[3], acceleration_rpm_s);
+    C5_WriteU16Be(&output[5], speed_rpm_tenths);
+    output[7] = C5_M370_SYNC_DISABLED;
+    output[8] = C5_M370_CHECK_BYTE;
 }
 
-/** @brief Write a fixed 15-byte #dddPddddTdddd! command without a terminator. */
-static void C5_WriteCommand(char *output,
-                            uint8_t id,
-                            uint16_t pulse,
-                            uint16_t time)
+static size_t C5_FormatWheelsAtAcceleration(
+    const C5_MotorLayout *layout,
+    const C5_WheelSpeeds *speeds,
+    uint16_t acceleration_rpm_s,
+    uint8_t *output,
+    size_t capacity)
 {
-    output[0] = '#';
-    C5_Write3(&output[1], id);
-    output[4] = 'P';
-    C5_Write4(&output[5], pulse);
-    output[9] = 'T';
-    C5_Write4(&output[10], time);
-    output[14] = '!';
+    uint32_t index;
+    uint32_t offset;
+    int32_t directed_speed;
+
+    if ((layout == NULL) || (speeds == NULL) || (output == NULL) ||
+        (acceleration_rpm_s == 0U) ||
+        (capacity < C5_MOTOR_GROUP_FRAME_SIZE) ||
+        !C5_LayoutIsValid(layout))
+    {
+        return 0U;
+    }
+
+    output[0] = C5_M370_BROADCAST_ID;
+    output[1] = C5_M370_COMMAND_MULTI;
+    C5_WriteU16Be(&output[2], C5_MOTOR_GROUP_FRAME_SIZE);
+    offset = 4U;
+
+    for (index = 0U; index < C5_MOTOR_COUNT; ++index)
+    {
+        directed_speed = C5_MotorProtocol_ClampSpeed(speeds->value[index]);
+        directed_speed *= layout->sign[index];
+        C5_WriteVelocity(&output[offset],
+                         layout->id[index],
+                         (directed_speed < 0) ? 1U : 0U,
+                         C5_MotorProtocol_SpeedToRpmTenths(
+                             (int16_t)directed_speed),
+                         acceleration_rpm_s);
+        offset += C5_MOTOR_VELOCITY_FRAME_SIZE;
+    }
+
+    output[offset] = C5_M370_CHECK_BYTE;
+    return C5_MOTOR_GROUP_FRAME_SIZE;
+}
+
+static int C5_LayoutIsValid(const C5_MotorLayout *layout)
+{
+    uint32_t index;
+    uint32_t other;
+
+    for (index = 0U; index < C5_MOTOR_COUNT; ++index)
+    {
+        if ((layout->id[index] == C5_M370_BROADCAST_ID) ||
+            ((layout->sign[index] != 1) && (layout->sign[index] != -1)))
+        {
+            return 0;
+        }
+        for (other = index + 1U; other < C5_MOTOR_COUNT; ++other)
+        {
+            if (layout->id[index] == layout->id[other])
+            {
+                return 0;
+            }
+        }
+    }
+    return 1;
 }
 
 int16_t C5_MotorProtocol_ClampSpeed(int32_t speed)
@@ -61,82 +127,73 @@ int16_t C5_MotorProtocol_ClampSpeed(int32_t speed)
     return (int16_t)speed;
 }
 
-uint16_t C5_MotorProtocol_SpeedToPulse(int16_t speed, int8_t sign)
+uint16_t C5_MotorProtocol_SpeedToRpmTenths(int16_t speed)
 {
-    int32_t pulse;
+    int32_t magnitude;
 
-    speed = C5_MotorProtocol_ClampSpeed(speed);
-    pulse = (int32_t)C5_MOTOR_PULSE_STOP + ((int32_t)speed * sign);
-    if (pulse < C5_MOTOR_PULSE_MIN)
+    magnitude = C5_MotorProtocol_ClampSpeed(speed);
+    if (magnitude < 0)
     {
-        pulse = C5_MOTOR_PULSE_MIN;
+        magnitude = -magnitude;
     }
-    if (pulse > C5_MOTOR_PULSE_MAX)
-    {
-        pulse = C5_MOTOR_PULSE_MAX;
-    }
-    return (uint16_t)pulse;
+    return (uint16_t)((magnitude * C5_MOTOR_MAX_RPM_X10) /
+                      C5_MOTOR_SPEED_MAX);
 }
 
-size_t C5_MotorProtocol_FormatSingleRaw(uint8_t id,
-                                        uint16_t pulse,
-                                        uint16_t time,
-                                        char *output,
-                                        size_t capacity)
+size_t C5_MotorProtocol_FormatStop(const C5_MotorLayout *layout,
+                                   uint8_t *output,
+                                   size_t capacity)
 {
-    if ((output == NULL) ||
-        (capacity < (C5_MOTOR_SINGLE_FRAME_SIZE + 1U)) ||
-        (pulse < C5_MOTOR_PULSE_MIN) ||
-        (pulse > C5_MOTOR_PULSE_MAX) ||
-        (time > 9999U))
+    uint32_t index;
+    uint32_t offset;
+
+    if ((layout == NULL) || (output == NULL) ||
+        (capacity < C5_MOTOR_STOP_FRAME_SIZE) ||
+        !C5_LayoutIsValid(layout))
     {
         return 0U;
     }
 
-    C5_WriteCommand(output, id, pulse, time);
-    output[C5_MOTOR_SINGLE_FRAME_SIZE] = '\0';
-    return C5_MOTOR_SINGLE_FRAME_SIZE;
-}
-
-size_t C5_MotorProtocol_FormatStop(char *output, size_t capacity)
-{
-    return C5_MotorProtocol_FormatSingleRaw(255U,
-                                            C5_MOTOR_PULSE_STOP,
-                                            0U,
-                                            output,
-                                            capacity);
+    output[0] = C5_M370_BROADCAST_ID;
+    output[1] = C5_M370_COMMAND_MULTI;
+    C5_WriteU16Be(&output[2], C5_MOTOR_STOP_FRAME_SIZE);
+    offset = 4U;
+    for (index = 0U; index < C5_MOTOR_COUNT; ++index)
+    {
+        output[offset] = layout->id[index];
+        output[offset + 1U] = C5_M370_COMMAND_STOP;
+        output[offset + 2U] = C5_M370_STOP_KEY;
+        output[offset + 3U] = C5_M370_SYNC_DISABLED;
+        output[offset + 4U] = C5_M370_CHECK_BYTE;
+        offset += C5_M370_STOP_SUBFRAME_SIZE;
+    }
+    output[offset] = C5_M370_CHECK_BYTE;
+    return C5_MOTOR_STOP_FRAME_SIZE;
 }
 
 size_t C5_MotorProtocol_FormatWheels(const C5_MotorLayout *layout,
                                      const C5_WheelSpeeds *speeds,
-                                     char *output,
+                                     uint8_t *output,
                                      size_t capacity)
 {
-    uint32_t index;
-    uint32_t offset;
-    uint16_t pulse;
+    return C5_FormatWheelsAtAcceleration(layout,
+                                         speeds,
+                                         C5_MOTOR_ACCEL_RPM_S,
+                                         output,
+                                         capacity);
+}
 
-    if ((layout == NULL) || (speeds == NULL) || (output == NULL) ||
-        (capacity < (C5_MOTOR_GROUP_FRAME_SIZE + 1U)))
-    {
-        return 0U;
-    }
+size_t C5_MotorProtocol_FormatControlledStop(
+    const C5_MotorLayout *layout,
+    uint16_t decel_rpm_s,
+    uint8_t *output,
+    size_t capacity)
+{
+    const C5_WheelSpeeds zero_speeds = {{0, 0, 0, 0}};
 
-    output[0] = '{';
-    offset = 1U;
-    for (index = 0U; index < C5_MOTOR_COUNT; ++index)
-    {
-        if ((layout->sign[index] != 1) && (layout->sign[index] != -1))
-        {
-            output[0] = '\0';
-            return 0U;
-        }
-        pulse = C5_MotorProtocol_SpeedToPulse(speeds->value[index],
-                                               layout->sign[index]);
-        C5_WriteCommand(&output[offset], layout->id[index], pulse, 0U);
-        offset += C5_MOTOR_SINGLE_FRAME_SIZE;
-    }
-    output[offset++] = '}';
-    output[offset] = '\0';
-    return offset;
+    return C5_FormatWheelsAtAcceleration(layout,
+                                         &zero_speeds,
+                                         decel_rpm_s,
+                                         output,
+                                         capacity);
 }
